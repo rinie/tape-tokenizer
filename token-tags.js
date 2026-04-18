@@ -3,18 +3,15 @@
 // Tag byte encoding rules:
 //   Punctuation  — exact ASCII value of the character itself
 //   Literals     — UPPERCASE initial  (I N D R S X)
-//   Keywords     — most-used per letter group gets the best available
-//                  printable mnemonic char (lower or upper);
-//                  secondary keywords get 0x80+ sequential slots
+//   Keywords     — every keyword gets a printable A-Za-z mnemonic char
 //   EOF          — 0x00 (NUL, never valid in source)
 //
 // Frequency tiers:  ★★★ very high  ★★ medium  ★ low
 //
-// Quick decode cheat sheet for hex dumps:
+// Quick decode cheat sheet for hex dumps (TAG_LABEL format: <char>;<name>):
 //   0x00        = EOF
-//   0x28–0x7D   = punctuation (exact ascii) or tier-1 keyword/literal
-//   0x80–0x8D   = tier-2 keyword (rare)
-//   0x30        = null  (mnemonic: '0')
+//   0x28–0x7E   = punctuation (exact ascii) or keyword/literal
+//   0x30 '0'    = null  (mnemonic: falsy zero)
 //   0x49 'I'    = IDENT
 //   0x4E 'N'    = NUMBER (integer)
 //   0x44 'D'    = DOUBLE (float)
@@ -23,6 +20,10 @@
 //   0x58 'X'    = TEMPLATE (eXpression string)
 //   0x5E '^'    = catch  (caret catches upward — throw/catch arc)
 //   0x7E '~'    = false  (bitwise NOT of true)
+//
+// Free A-Za-z after all assignments: H Q  (uppercase)
+//                                    b g m p q u z  (lowercase)
+// → reserved for TypeScript keywords
 
 export const T = {
 
@@ -96,21 +97,21 @@ export const T = {
   KW_NULL:       0x30,  // 0  ★★   null is falsy/zero
   KW_FALSE:      0x7E,  // ~  ★★   bitwise NOT of true
 
-  // ── keywords tier 2 — 0x80+ sequential ───────────────────────────────────
-  KW_BREAK:      0x80,
-  KW_CASE:       0x81,
-  KW_CONTINUE:   0x82,
-  KW_DEBUGGER:   0x83,
-  KW_DEFAULT:    0x84,
-  KW_DO:         0x85,
-  KW_FINALLY:    0x86,
-  KW_IN:         0x87,
-  KW_INSTANCEOF: 0x88,
-  KW_STATIC:     0x89,
-  KW_SWITCH:     0x8A,
-  KW_TRY:        0x8B,
-  KW_VOID:       0x8C,
-  KW_YIELD:      0x8D,
+  // ── keywords tier 2 — unused A-Za-z mnemonics ────────────────────────────
+  KW_BREAK:      0x42,  // B  Break
+  KW_INSTANCEOF: 0x4A,  // J  (best available)
+  KW_CASE:       0x4B,  // K  Kase (K-sound)
+  KW_FINALLY:    0x4C,  // L  finaLly
+  KW_DO:         0x4F,  // O  lOop (circular)
+  KW_STATIC:     0x50,  // P  (best available)
+  KW_VOID:       0x56,  // V  Void
+  KW_SWITCH:     0x57,  // W  sWitch
+  KW_TRY:        0x59,  // Y  trY
+  KW_YIELD:      0x5A,  // Z  last/rare
+  KW_DEBUGGER:   0x47,  // G  debuGger
+  KW_DEFAULT:    0x55,  // U  defaUlt
+  KW_IN:         0x6A,  // j  (best available)
+  KW_CONTINUE:   0x6B,  // k  kontinue
 };
 
 // Reverse map — tag byte → constant name (for debug dumps)
@@ -161,3 +162,20 @@ export const KEYWORDS = new Map([
   ['while',      T.KW_WHILE],
   ['yield',      T.KW_YIELD],
 ]);
+
+// Human-readable label for hex dumps: punctuation → bare char, keywords/literals → "<char>;<name>"
+const _kwByTag = new Map([...KEYWORDS].map(([kw, tag]) => [tag, kw]));
+
+export const TAG_LABEL = {};
+for (const [name, byte] of Object.entries(T)) {
+  const ch = String.fromCharCode(byte);
+  if (name === 'EOF') {
+    TAG_LABEL[byte] = 'EOF';
+  } else if (name.startsWith('KW_')) {
+    TAG_LABEL[byte] = `${ch};${_kwByTag.get(byte)}`;
+  } else if (/[A-Za-z]/.test(ch)) {
+    TAG_LABEL[byte] = `${ch};${name.toLowerCase()}`;
+  } else {
+    TAG_LABEL[byte] = ch;
+  }
+}
