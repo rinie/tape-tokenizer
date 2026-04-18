@@ -1,6 +1,6 @@
 // demo.js  —  run with: node demo.js
 import { Tokenizer } from './tokenizer.js';
-import { T, TAG_NAME } from './token-tags.js';
+import { T, TAG_LABEL } from './token-tags.js';
 
 const src = `
 async function fetchUser(id) {
@@ -29,11 +29,14 @@ console.log(`string bufs  : ${result.strings.length}`);
 console.log();
 console.log('── tape dump ────────────────────────────────────────');
 
+let braceDepth = 0;
 for (let i = 0; i < tape.length; i++) {
   const t   = tag(i);
   const p   = payload(i);
+  if (t === T.RBRACE) braceDepth--;
   const hex = `0x${t.toString(16).padStart(2, '0')}`;
-  const name = (TAG_NAME[t] ?? `?${hex}`).padEnd(16);
+  const name = (TAG_LABEL[t] ?? `?${hex}`).padEnd(16);
+  const indent = '  '.repeat(braceDepth);
   let detail = '';
 
   if      (t === T.IDENT)    detail = `id=${p}  "${identName(i)}"`;
@@ -45,7 +48,8 @@ for (let i = 0; i < tape.length; i++) {
   else if (t === T.NUMBER || t === T.DOUBLE)
                              detail = `src @${p} = "${src.slice(p, p+12).split(/\s/)[0]}"`;
 
-  console.log(`[${String(i).padStart(3)}] ${hex}  ${name} ${detail}`);
+  console.log(`[${String(i).padStart(3)}] ${hex}  ${indent}${name} ${detail}`);
+  if (t === T.LBRACE) braceDepth++;
 }
 
 // ── demo: O(1) subtree skip ───────────────────────────────────────────────────
