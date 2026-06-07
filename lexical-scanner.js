@@ -54,6 +54,12 @@ const X_SELF  = 0x2F;  // /  self-closing tag
 const X_COMM  = 0x23;  // #  comment
 const X_DECL  = 0x21;  // !  declaration / processing-instruction / CDATA
 
+// ── preprocessor-conditional projection chars (the SECOND, line-based family) ──
+// A mnemonic ternary shape: #if ? … #else : … #endif ;
+const P_IF    = 0x3F;  // ?  #if / #ifdef / #ifndef  (open)
+const P_ELSE  = 0x3A;  // :  #elif / #else            (branch marker, no nesting)
+const P_ENDIF = 0x3B;  // ;  #endif                   (close)
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function startsWith(src, i, str) {
@@ -140,11 +146,47 @@ class LexicalScanner {
     const lineComments  = table.lineComments  || [];
     const blockComments = table.blockComments || [];
     const strings       = table.strings       || [];
+    const preproc       = !!table.preprocessor;
     const len = src.length;
 
-    const stack = [];   // tape indices of open brackets awaiting a close
+    // Unified stack of open structural tokens, both families:
+    //   { idx, family: 'brace'|'cpp', code, name? }
+    // Braces and preprocessor conditionals share it so that when they interleave
+    // instead of nesting, the crossing is visible.
+    const stack = [];
     let depth = 0;
     let i = 0;
+
+    // Tolerant close, shared by braces and #endif. Search the stack top-down for
+    // the nearest matching opener; anything still open above it has its boundary
+    // CROSSED by this closer (a seam, not clean nesting) — reported, not faulted.
+    // Used only when the top of stack is not already a clean match, so well-formed
+    // LIFO code takes the fast path and is unaffected.
+    const closeStructural = (closeIdx, family, isMatch) => {
+      let found = -1;
+      for (let s = stack.length - 1; s >= 0; s--) { if (isMatch(stack[s])) { found = s; break; } }
+      if (found === -1) return;   // no opener in this file — orphan close (a BOF seam); jump stays -1
+      for (let s = stack.length - 1; s > found; s--) {
+        const sk = stack[s];
+        if (sk.crossed) continue;
+        sk.crossed = true;
+        this._findings.push({
+          kind: sk.family === family ? 'mismatch' : 'crossing',
+          severity: 'warning',
+          char: sk.name || String.fromCharCode(sk.code),
+          offset: this._offsetArr[sk.idx],
+          endOffset: this._offsetArr[closeIdx],
+          tapeIndex: sk.idx,
+          note: sk.family === family
+            ? 'a nested opener of the same family is still open at this closer'
+            : `${sk.family} and ${family} boundaries interleave here — a seam, not clean nesting`,
+        });
+      }
+      const open = stack[found];
+      stack.splice(found, 1);
+      this._jumpArr[open.idx] = closeIdx;
+      this._jumpArr[closeIdx] = open.idx;
+    };
 
     scanLoop:
     while (i < len) {
@@ -183,6 +225,16 @@ class LexicalScanner {
 
       // 3. string / template literals
       for (const s of strings) {
+        // line-context gate: a spec may apply only on a preprocessor directive
+        // line (e.g. C header names `<…>` only on `#include` / `#import`). This
+        // is how an otherwise structure-hostile delimiter — `<`/`>`, which are
+        // operators everywhere else — is admitted safely. The gate is a
+        // line-local positional fact, not an AST: scan back to the line start,
+        // require `#`, read the directive word.
+        if (s.onlyOnDirective) {
+          const d = this._lineDirective(src, i);
+          if (!d || !s.onlyOnDirective.includes(d)) continue;
+        }
         if (startsWith(src, i, s.open)) {
           const r = this._skipString(src, i, s);
           if (r.unterminated && !r.boundedByNewline) {
@@ -192,7 +244,7 @@ class LexicalScanner {
           }
           if (r.unterminated && r.boundedByNewline) {
             // grammar bounds a single-line string at the newline: report + resume
-            this._findings.push({ kind: 'unterminated-string', char: s.open, offset: i });
+            this._findings.push({ kind: 'unterminated-string', severity: 'error', char: s.open, offset: i });
             i = r.end;          // the newline; resume scanning code after it
           } else {
             i = r.end;          // just past the closing delimiter
@@ -203,29 +255,73 @@ class LexicalScanner {
       }
       if (skipped) continue;
 
+      // 3.5 preprocessor conditionals — the SECOND, line-based bracket family.
+      // #if/#ifdef/#ifndef open, #elif/#else mark a branch, #endif closes. They
+      // are matched by keyword and live on the same tape/stack as the braces, so
+      // a #if that straddles a { } shows up as a crossing in the repair map.
+      if (preproc && src.charCodeAt(i) === 0x23) {        // '#'
+        const dir = this._lineDirective(src, i);
+        if (dir === 'if' || dir === 'ifdef' || dir === 'ifndef') {
+          const idx = this._emit(P_IF, i, depth, this._intern(dir));
+          stack.push({ idx, family: 'cpp', code: P_IF, name: dir });
+          depth++;
+          i++; continue;
+        }
+        if (dir === 'elif' || dir === 'else') {
+          this._emit(P_ELSE, i, depth > 0 ? depth - 1 : 0, this._intern(dir));
+          i++; continue;
+        }
+        if (dir === 'endif') {
+          depth = depth > 0 ? depth - 1 : 0;
+          const idx = this._emit(P_ENDIF, i, depth, this._intern('endif'));
+          closeStructural(idx, 'cpp', (e) => e.family === 'cpp');
+          i++; continue;
+        }
+        // #include / #define / #pragma etc. are single-line — not structural.
+      }
+
       // 4. structural brackets
       const code = src.charCodeAt(i);
       if (code < 128 && IS_OPEN[code]) {
         const idx = this._emit(code, i, depth);
-        stack.push(idx);
+        stack.push({ idx, family: 'brace', code });
         depth++;
       } else if (code < 128 && IS_CLOSE[code]) {
         depth = depth > 0 ? depth - 1 : 0;
         const idx = this._emit(code, i, depth);
-        if (stack.length > 0) {
-          const openIdx = stack[stack.length - 1];
-          if (CLOSE_OF[this._tagArr[openIdx]] === code) {
-            stack.pop();
-            this._jumpArr[openIdx] = idx;
-            this._jumpArr[idx]     = openIdx;
-          }
-          // mismatch: leave opener on stack; this close is an orphan (jump -1)
+        const top = stack[stack.length - 1];
+        if (top && top.family === 'brace' && CLOSE_OF[top.code] === code) {
+          stack.pop();                                    // clean LIFO close (fast path)
+          this._jumpArr[top.idx] = idx;
+          this._jumpArr[idx]     = top.idx;
+        } else {
+          // not a clean top match — tolerant search (may reveal a crossing seam)
+          closeStructural(idx, 'brace', (e) => e.family === 'brace' && CLOSE_OF[e.code] === code);
         }
       }
       i++;
     }
 
     return this._buildResult();
+  }
+
+  // The C-preprocessor directive on the line containing offset i, or null.
+  // "Line starts with #" precisely: first non-whitespace byte is '#', then the
+  // following word (after optional whitespace, allowing `#  include`). Returns
+  // the lowercase directive word (e.g. 'include', 'define') or null.
+  _lineDirective(src, i) {
+    let p = i;
+    while (p > 0 && src.charCodeAt(p - 1) !== 0x0A) p--;            // line start
+    while (p < i && (src.charCodeAt(p) === 0x20 || src.charCodeAt(p) === 0x09)) p++;
+    if (src.charCodeAt(p) !== 0x23) return null;                    // '#'
+    p++;
+    while (p < src.length && (src.charCodeAt(p) === 0x20 || src.charCodeAt(p) === 0x09)) p++;
+    let w = '';
+    while (p < src.length) {
+      const c = src.charCodeAt(p);
+      if (c >= 0x61 && c <= 0x7A) { w += src[p]; p++; } else break;  // a-z
+    }
+    return w || null;
   }
 
   // Scan a string/template starting at the opening delimiter.
@@ -358,8 +454,10 @@ class LexicalScanner {
     for (let s = stack.length - 1; s > found; s--) {
       this._findings.push({
         kind: 'improper-nesting',
+        severity: 'warning',
         char: this._internNames[stack[s].nameId],
         offset: this._offsetArr[stack[s].idx],
+        endOffset: offset,
         tapeIndex: stack[s].idx,
         note: `still open when </${name}> closed`,
       });
@@ -382,7 +480,7 @@ class LexicalScanner {
     const endOffset = this._src.length;   // EOF — factual outer boundary, not a guessed close
     this._unterminated = { kind, char, startOffset, endOffset };
     this._findings.push({
-      kind, char,
+      kind, char, severity: 'error',      // a hard stop — scanning cannot continue
       offset: startOffset,                // primary (sort) boundary: where it opened
       startOffset, endOffset,             // both boundaries shown; terminator unknown
       note: 'opened here; ran to end of input — terminator not found, end not guessed',
@@ -457,27 +555,52 @@ class LexicalScanner {
         if (jumps[i] !== -1) continue;
         const tag = tags[i];
         const ch  = nameOf(i) || String.fromCharCode(tag);
-        if (tag === X_OPEN || IS_OPEN[tag]) {
+        if (tag === X_OPEN || IS_OPEN[tag] || tag === P_IF) {
           // opener with no partner: show both boundaries — where it opened, and
           // EOF, the point at which it was still open. The close is not guessed.
-          const kind = tag === X_OPEN ? 'unclosed-tag' : 'unmatched-open';
-          findings.push({ kind, char: ch, offset: offsets[i], startOffset: offsets[i], endOffset: eof, tapeIndex: i });
-        } else if (tag === X_CLOSE || IS_CLOSE[tag]) {
+          // This is a SEAM, not an error: the file isn't self-contained — the
+          // partner presumably lives across an #include / file boundary.
+          const kind = tag === X_OPEN ? 'unclosed-tag' : tag === P_IF ? 'unclosed-cond' : 'unmatched-open';
+          findings.push({
+            kind, severity: 'warning', seam: 'unclosed-at-eof',
+            char: ch, offset: offsets[i], startOffset: offsets[i], endOffset: eof, tapeIndex: i,
+            note: 'opener has no close in this file — not self-contained (resolves across an include/file seam?)',
+          });
+        } else if (tag === X_CLOSE || IS_CLOSE[tag] || tag === P_ENDIF) {
           // closer with no opener: only one boundary is real (the close itself);
-          // the matching open is absent, so we do not invent its position.
-          const kind = tag === X_CLOSE ? 'orphan-close-tag' : 'orphan-close';
-          findings.push({ kind, char: ch, offset: offsets[i], tapeIndex: i });
+          // the matching open is absent — again a seam, not an error.
+          const kind = tag === X_CLOSE ? 'orphan-close-tag' : tag === P_ENDIF ? 'orphan-endif' : 'orphan-close';
+          findings.push({
+            kind, severity: 'warning', seam: 'unopened-at-bof',
+            char: ch, offset: offsets[i], tapeIndex: i,
+            note: 'closer has no opener in this file — not self-contained (seam?)',
+          });
         }
-        // comments / declarations / self-close: not imbalances
+        // comments / declarations / self-close / #else markers: not imbalances
       }
       findings.sort((a, b) => a.offset - b.offset);
       return findings;
     }
 
+    // The seams are the warning-class findings: the file's structure does not
+    // close within itself. They are NOT errors — they're exactly the "strange
+    // seam" signal (a fragment, a macro that opens a brace, an unguarded #if,
+    // an interleaved boundary) that says this isn't a clean standalone text file.
+    function seams() {
+      return repairMap().filter((f) => f.severity === 'warning');
+    }
+
+    // True when the structure closes within the file (no seams). Errors
+    // (unterminated tokens) are a separate axis and don't affect this.
+    function selfContained() {
+      return seams().length === 0;
+    }
+
     return {
       length: len, tags, offsets, jumps, depths, names, src, internNames,
       unterminated, nameOf,
-      toPrintable, toPrintableIndented, outline, dumpColumns, repairMap,
+      toPrintable, toPrintableIndented, outline, dumpColumns,
+      repairMap, seams, selfContained,
     };
   }
 }
@@ -497,11 +620,19 @@ const JS_TABLE = {
 
 const C_TABLE = {
   mode: 'brackets',
+  // C is two structure systems on one file: the free-form braces below, and the
+  // line-based preprocessor conditional family (#if … #endif), enabled here. Both
+  // share one tape; where they interleave instead of nest, we report a crossing.
+  preprocessor: true,
   lineComments: ['//'],
   blockComments: [{ open: '/*', close: '*/' }],
   strings: [
     { open: '"', close: '"', escape: '\\', multiline: false },
     { open: "'", close: "'", escape: '\\', multiline: false },
+    // Header-name string `<…>` — admitted ONLY on a #include / #import line.
+    // The TextMate grammar's `string.quoted.other.lt-gt.include` scope, made
+    // safe by a line-context gate so `<`/`>` stay operators everywhere else.
+    { open: '<', close: '>', escape: null, multiline: false, onlyOnDirective: ['include', 'import'] },
   ],
 };
 
