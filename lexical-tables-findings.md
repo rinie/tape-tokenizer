@@ -143,3 +143,30 @@ Harvest, then **distrust**: accept only pure-literal delimiters from the
 canonical structural scopes, reject the highlighting noise with a recorded
 reason, and confirm against a hand-written table where one exists. The grammar
 is a starting hypothesis and a useful cross-check — never ground truth.
+
+## Refinement — the dangerous scope is safe under a line-context gate
+
+The `<…>` include scope is dangerous *globally*, but not *on a `#include`
+line*. So rather than discard it, admit it under a gate: a header-name string
+`<…>` opens only when the line is a `#include` / `#import` directive
+(`onlyOnDirective: ['include', 'import']` in `C_TABLE`). Everywhere else `<`
+and `>` stay operators. This is a line-local positional fact, not an AST walk —
+scan back to the line start, require `#`, read the directive word.
+
+**Why `#include`/`#import` and not bare "starts with `#`":** `#define MASK
+(1 << 3)` also starts with `#`. Gating on bare `#` would let its `<<` open a
+header string. Demonstrated in `demo-directive.js`:
+
+```
+                                        gated (#include only)   ungated (every line)
+1. #include <stdio.h>                   0 findings              0
+2. if (a < b) { … }                     0 findings              3   ← '<' opens a string to EOL
+3. #define MASK (1 << 3)                0 findings              2   ← '#define' is not #include
+4. (a < b) && (c > d)                   0 findings              0
+```
+
+The harvester closes the loop: it no longer flat-rejects the `lt-gt` scope —
+it recognizes it and emits a **gated** delimiter (`string(gated)`), and the
+self-check against the hand-written `C_TABLE` (which now carries the same gated
+spec) still matches. The general lesson: harvesting is not binary accept/reject
+— some highlighting scopes map to *context-gated* structure.

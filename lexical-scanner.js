@@ -183,6 +183,16 @@ class LexicalScanner {
 
       // 3. string / template literals
       for (const s of strings) {
+        // line-context gate: a spec may apply only on a preprocessor directive
+        // line (e.g. C header names `<…>` only on `#include` / `#import`). This
+        // is how an otherwise structure-hostile delimiter — `<`/`>`, which are
+        // operators everywhere else — is admitted safely. The gate is a
+        // line-local positional fact, not an AST: scan back to the line start,
+        // require `#`, read the directive word.
+        if (s.onlyOnDirective) {
+          const d = this._lineDirective(src, i);
+          if (!d || !s.onlyOnDirective.includes(d)) continue;
+        }
         if (startsWith(src, i, s.open)) {
           const r = this._skipString(src, i, s);
           if (r.unterminated && !r.boundedByNewline) {
@@ -226,6 +236,25 @@ class LexicalScanner {
     }
 
     return this._buildResult();
+  }
+
+  // The C-preprocessor directive on the line containing offset i, or null.
+  // "Line starts with #" precisely: first non-whitespace byte is '#', then the
+  // following word (after optional whitespace, allowing `#  include`). Returns
+  // the lowercase directive word (e.g. 'include', 'define') or null.
+  _lineDirective(src, i) {
+    let p = i;
+    while (p > 0 && src.charCodeAt(p - 1) !== 0x0A) p--;            // line start
+    while (p < i && (src.charCodeAt(p) === 0x20 || src.charCodeAt(p) === 0x09)) p++;
+    if (src.charCodeAt(p) !== 0x23) return null;                    // '#'
+    p++;
+    while (p < src.length && (src.charCodeAt(p) === 0x20 || src.charCodeAt(p) === 0x09)) p++;
+    let w = '';
+    while (p < src.length) {
+      const c = src.charCodeAt(p);
+      if (c >= 0x61 && c <= 0x7A) { w += src[p]; p++; } else break;  // a-z
+    }
+    return w || null;
   }
 
   // Scan a string/template starting at the opening delimiter.
@@ -502,6 +531,10 @@ const C_TABLE = {
   strings: [
     { open: '"', close: '"', escape: '\\', multiline: false },
     { open: "'", close: "'", escape: '\\', multiline: false },
+    // Header-name string `<…>` — admitted ONLY on a #include / #import line.
+    // The TextMate grammar's `string.quoted.other.lt-gt.include` scope, made
+    // safe by a line-context gate so `<`/`>` stay operators everywhere else.
+    { open: '<', close: '>', escape: null, multiline: false, onlyOnDirective: ['include', 'import'] },
   ],
 };
 

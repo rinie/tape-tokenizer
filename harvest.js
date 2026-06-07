@@ -126,6 +126,24 @@ function harvest(grammar) {
     let category = null;
     for (const [cat, rx] of Object.entries(SCOPE)) if (rx.test(p.name)) { category = cat; break; }
 
+    // Special case: the header-name scope `<…>` (string.quoted.other.lt-gt.*).
+    // Globally dangerous (would make every </> a delimiter), but admissible
+    // under a line-context gate — only on #include / #import lines. Rather than
+    // reject it outright, emit a GATED delimiter. Harvesting is not just
+    // accept/reject; some highlighting scopes map to context-gated structure.
+    if (/lt-gt/.test(p.name)) {
+      const open = toLiteral(p.begin);
+      const close = toLiteral(p.end);
+      if (open === '<' && close === '>') {
+        if (!strSeen.has(open)) {
+          strSeen.add(open);
+          strings.push({ open, close, escape: null, multiline: false, onlyOnDirective: ['include', 'import'] });
+          accepted.push({ name: p.name, kind: 'string(gated)', open, close, gate: '#include/#import' });
+        }
+        continue;
+      }
+    }
+
     if (!category) { rejected.push({ ...p, reason: 'non-structural scope (highlighting only)' }); continue; }
     if (REJECT.test(p.name)) {
       const lit = toLiteral(p.begin);
@@ -174,7 +192,7 @@ function diffTables(harvested, ref) {
   const norm = (t) => ({
     lineComments: [...(t.lineComments || [])].sort(),
     blockComments: (t.blockComments || []).map((b) => `${b.open}…${b.close}`).sort(),
-    strings: (t.strings || []).map((s) => `${s.open}…${s.close}${s.multiline ? ' (ml)' : ''}`).sort(),
+    strings: (t.strings || []).map((s) => `${s.open}…${s.close}${s.multiline ? ' (ml)' : ''}${s.onlyOnDirective ? ` @${s.onlyOnDirective.join('/')}` : ''}`).sort(),
   });
   const a = norm(harvested), b = norm(ref);
   const lines = [];
