@@ -505,6 +505,31 @@ const C_TABLE = {
   ],
 };
 
+// Python — derived from its documented lexical grammar (the same delimiters a
+// TextMate grammar encodes), then VALIDATED against real files (see validate.js).
+//
+// Order matters: the triple-quoted delimiters MUST be listed before the single
+// ones, because the scanner checks string specs in order and `"""` must win over
+// `"`. Triple-quoted strings are multi-line — so an unterminated one running to
+// EOF is the canonical "note the start, never guess the end" case.
+//
+// Known limitation (deferred, matches the design doc's open question on template
+// nesting): f-string interpolation `f"...{expr}..."` is treated as opaque string
+// content, so brackets inside `{ }` are not counted as structure. Real-world
+// validation confirms this rarely affects balance, since interpolations are
+// themselves balanced — but it is a hypothesis the table makes, noted honestly.
+const PYTHON_TABLE = {
+  mode: 'brackets',
+  lineComments: ['#'],
+  blockComments: [],
+  strings: [
+    { open: '"""', close: '"""', escape: '\\', multiline: true  },
+    { open: "'''", close: "'''", escape: '\\', multiline: true  },
+    { open: '"',   close: '"',   escape: '\\', multiline: false },
+    { open: "'",   close: "'",   escape: '\\', multiline: false },
+  ],
+};
+
 const XML_TABLE = { mode: 'xml' };
 
-export { LexicalScanner, JS_TABLE, C_TABLE, XML_TABLE };
+export { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE };
