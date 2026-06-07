@@ -46,27 +46,43 @@ function validateFile(path, table) {
   };
 }
 
-function report(res) {
+function report(res, policy = 'lib') {
   if (res.error) {
     console.log(`  ✗ ${res.path}  — ${res.error}`);
     return;
   }
-  // Three outcomes: clean, seam-only (warning — not self-contained), error.
+  // Provenance policy. The scanner only observes a seam; whether it's tolerable
+  // depends on who wrote the file:
+  //   'lib' — third-party / included headers you don't own. Seams are expected
+  //           (guards, macro pairs, .inc fragments) → warning.
+  //   'own' — your own code. If you write breadth-first, def-before-use,
+  //           self-contained units, the file MUST close within itself → a seam
+  //           is your bug → error.
+  // Hard malformations (unterminated tokens) are errors under either policy.
+  const errs  = policy === 'own' ? [...res.errors, ...res.seams] : res.errors;
+  const warns = policy === 'own' ? [] : res.seams;
+
   let verdict;
-  if (res.errors.length) verdict = `✗ ${res.errors.length} error(s)`;
-  else if (res.seams.length) verdict = `⚠ ${res.seams.length} seam(s)`;
-  else verdict = '✓ balanced';
+  if (errs.length)       verdict = `✗ ${errs.length} error(s)`;
+  else if (warns.length) verdict = `⚠ ${warns.length} seam(s)`;
+  else                   verdict = '✓ balanced';
   const stop = res.stoppedEarly ? `  [stopped early: ${res.stoppedEarly.kind} @${res.stoppedEarly.startOffset}]` : '';
-  console.log(`  ${verdict.padEnd(14)} ${res.path}  (${res.tokens} structural tokens, ${res.bytes} bytes)${stop}`);
-  for (const f of [...res.errors, ...res.seams]) {
+  console.log(`  ${verdict.padEnd(14)} ${res.path}  [${policy}]  (${res.tokens} structural tokens, ${res.bytes} bytes)${stop}`);
+  for (const f of [...errs, ...warns]) {
     const span = f.endOffset !== undefined ? `off ${f.offset}→${f.endOffset}` : `off ${f.offset}`;
-    const sev = f.severity === 'warning' ? 'seam' : 'error';
-    console.log(`       • [${sev}] line ${f.line}: ${f.kind} '${f.char}'  (${span})${f.note ? ' — ' + f.note : ''}`);
+    const isSeam = f.severity === 'warning';
+    const tag = policy === 'own' && isSeam ? 'error(seam-in-own-code)' : isSeam ? 'seam' : 'error';
+    console.log(`       • [${tag}] line ${f.line}: ${f.kind} '${f.char}'  (${span})${f.note ? ' — ' + f.note : ''}`);
   }
 }
 
 function main() {
-  const args = process.argv.slice(2);
+  let args = process.argv.slice(2);
+  // provenance policy: --own (strict, your code) | --lib (lenient, default)
+  let policy = 'lib';
+  if (args.includes('--own'))  policy = 'own';
+  if (args.includes('--lib'))  policy = 'lib';
+  args = args.filter((a) => a !== '--own' && a !== '--lib');
 
   if (args.length >= 2) {
     const lang = args[0];
@@ -75,26 +91,27 @@ function main() {
       console.error(`unknown language '${lang}' — use one of: ${Object.keys(TABLES).join(', ')}`);
       process.exit(2);
     }
-    console.log(`── validating ${args.length - 1} file(s) as '${lang}' ──`);
-    for (const f of args.slice(1)) report(validateFile(f, table));
+    console.log(`── validating ${args.length - 1} file(s) as '${lang}' [policy: ${policy}] ──`);
+    for (const f of args.slice(1)) report(validateFile(f, table), policy);
     return;
   }
 
   // Built-in suite: scan the repo's own source (real, known-good files).
   console.log('── built-in suite ───────────────────────────────────────────');
-  console.log('JS_TABLE vs the repo\'s own JavaScript (should be balanced):');
+  console.log('JS_TABLE vs the repo\'s own JavaScript (own code — must be self-contained):');
   for (const f of ['bracket-scanner.js', 'lexical-scanner.js', 'demo-bracket.js',
                    'demo-lexical.js', 'demo.js', 'token-tags.js', 'tokenizer.js', 'validate.js']) {
-    report(validateFile(f, JS_TABLE));
+    report(validateFile(f, JS_TABLE), 'own');
   }
-  console.log('\nC_TABLE vs real C (self-contained vs a fragment with seams):');
-  report(validateFile('samples/sample.c', C_TABLE));
-  report(validateFile('samples/fragment.inc.c', C_TABLE));
+  console.log('\nC_TABLE — same fragment, two provenances (the policy point):');
+  report(validateFile('samples/sample.c', C_TABLE), 'own');        // our own file → strict
+  report(validateFile('samples/fragment.inc.c', C_TABLE), 'lib');  // a library .inc → seams OK
+  report(validateFile('samples/fragment.inc.c', C_TABLE), 'own');  // if it were OURS → errors
 
   console.log('\nPYTHON_TABLE vs a real Python file:');
-  report(validateFile('samples/sample.py', PYTHON_TABLE));
+  report(validateFile('samples/sample.py', PYTHON_TABLE), 'own');
   console.log('\nXML_TABLE vs a real XML fragment:');
-  report(validateFile('samples/sample.xml', XML_TABLE));
+  report(validateFile('samples/sample.xml', XML_TABLE), 'lib');
 }
 
 main();

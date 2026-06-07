@@ -245,3 +245,26 @@ Two structure systems, one tape, scanned before the preprocessor runs. Files
 that close within themselves are clean; files with strange seams across include
 boundaries are **warned about, not rejected** — the scanner observes and
 reports, it does not enforce or expand.
+
+## Severity is provenance — a seam is a warning for the lib, an error for your code
+
+The scanner only *observes* a seam (a positional fact, family-neutral). Whether
+that seam is acceptable is a **policy** decision based on who wrote the file —
+not something the scanner should bake in:
+
+| provenance | rationale | seam verdict |
+|---|---|---|
+| **`lib`** (third-party / included headers) | You don't own them. Guards, `BEGIN/END` macro pairs, X-macro `.inc` fragments are *legitimately* not self-contained. | **warning** |
+| **`own`** (your code) | If you write breadth-first, def-before-use, self-contained units, the file **must** close within itself. A seam is *your* broken discipline. | **error** |
+
+`validate.js` carries this as a `--own` / `--lib` policy (default `lib`). The
+exact same `fragment.inc.c` reads both ways:
+
+```
+  ⚠ 2 seam(s)    fragment.inc.c  [lib]   ← a library include: seams are expected
+  ✗ 2 error(s)   fragment.inc.c  [own]   ← if it were ours: [error(seam-in-own-code)]
+```
+
+Hard malformations (unterminated tokens) are errors under either policy — only
+the *seam* class flips. The scanner stays Gutenberg-neutral; provenance is the
+swappable layer that decides what the observation *means*.
