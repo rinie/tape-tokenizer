@@ -17,6 +17,38 @@ Philosophy (all already in the repo's spirit; keep it):
 - **Positional / Gutenberg-honest.** The scanner records positions; it does not judge meaning. Balance is a separate semantic pass.
 - **Observe and report, don't enforce and throw.**
 
+## 1a. The spine — Postel's Law, the defensible form
+
+Those four bullets are one principle wearing four hats. The name is **Postel's
+Law** (the Robustness Principle): *be liberal in what you accept, be
+conservative in what you send.* The whole design is that law applied to source
+structure, and the two clauses map onto a single, concrete axis — **provenance**:
+
+| Postel clause | here | mechanism |
+|---|---|---|
+| *Be liberal in what you accept* | other people's code — libraries, included headers, fragments | the scanner **never faults**; it recovers from unbalanced brackets, improper XML nesting, and `#if`/brace seams. Seams from `lib` code are **warnings**. |
+| *Be conservative in what you send* | your own code — breadth-first, def-before-use, self-contained units | the `own` policy holds your files to closing within themselves; a seam in your code is an **error**, not a warning. |
+
+So `--lib` vs `--own` (in `validate.js`) is not an arbitrary toggle — it is the
+two halves of Postel, one per direction of data flow. Liberal on input,
+conservative on output.
+
+**The defensible form.** Postel's Law has earned real criticism (RFC 9413):
+"be liberal" can breed ossification and silent corruption — garbage accepted
+becomes garbage depended upon. This design dodges that because **liberal
+acceptance is never silent**:
+
+- Every tolerance produces a **reported finding** — both boundaries, a source
+  offset, a named kind. We accept the malformed input *and* say exactly where
+  and how it deviated. Liberality without hiding.
+- The `own` policy is the enforcement of the conservative half — you do not get
+  to ship your own seams unnoticed.
+
+The rule, then: **liberal observation, conservative authorship, nothing
+swallowed in silence.** Severity is not intrinsic to a finding — the scanner
+only observes (Gutenberg-neutral); provenance decides what the observation
+*means*. Keep that seam open: the scanner must never bake in a verdict.
+
 ## 2. The real work is the lexical table, not the bracket counting
 
 Counting `{}[]()` onto a tape is ~200 lines and trivial. **The generality lives entirely in knowing which brackets to *ignore*** — those inside string literals, char literals, and comments:
