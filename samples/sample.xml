@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- a catalog fragment with no enforced single root in our scanner's view -->
+<catalog>
+  <book id="bk101" cat="ref">
+    <title>XML &amp; the art of &gt; brackets</title>
+    <author>Gambardella, Matthew</author>
+    <price>44.95</price>
+    <tags>
+      <tag>computing</tag>
+      <tag>markup</tag>
+    </tags>
+  </book>
+  <book id="bk102" available="true">
+    <title>Midnight Rain</title>
+    <note>Contains a literal &lt;tag&gt; reference and a "quoted > inside attr"</note>
+  </book>
+</catalog>
