@@ -34,14 +34,15 @@ function validateFile(path, table) {
   }
   const sc = new LexicalScanner();
   const r = sc.scan(src, table);
-  const findings = r.repairMap();
+  const findings = r.repairMap().map((f) => ({ ...f, line: lineOf(src, f.offset ?? f.startOffset ?? 0) }));
   return {
     path,
     bytes: src.length,
     tokens: r.length,
-    balanced: findings.length === 0,
+    selfContained: r.selfContained(),
+    errors: findings.filter((f) => f.severity === 'error'),
+    seams: findings.filter((f) => f.severity === 'warning'),
     stoppedEarly: r.unterminated,
-    findings: findings.map((f) => ({ ...f, line: lineOf(src, f.offset ?? f.startOffset ?? 0) })),
   };
 }
 
@@ -50,14 +51,17 @@ function report(res) {
     console.log(`  ✗ ${res.path}  — ${res.error}`);
     return;
   }
-  const verdict = res.balanced ? '✓ balanced' : `✗ ${res.findings.length} finding(s)`;
+  // Three outcomes: clean, seam-only (warning — not self-contained), error.
+  let verdict;
+  if (res.errors.length) verdict = `✗ ${res.errors.length} error(s)`;
+  else if (res.seams.length) verdict = `⚠ ${res.seams.length} seam(s)`;
+  else verdict = '✓ balanced';
   const stop = res.stoppedEarly ? `  [stopped early: ${res.stoppedEarly.kind} @${res.stoppedEarly.startOffset}]` : '';
-  console.log(`  ${verdict.padEnd(18)} ${res.path}  (${res.tokens} structural tokens, ${res.bytes} bytes)${stop}`);
-  for (const f of res.findings) {
-    const span = f.endOffset !== undefined
-      ? `off ${f.offset}→${f.endOffset}`   // both boundaries shown
-      : `off ${f.offset}`;
-    console.log(`       • line ${f.line}: ${f.kind} '${f.char}'  (${span})${f.note ? ' — ' + f.note : ''}`);
+  console.log(`  ${verdict.padEnd(14)} ${res.path}  (${res.tokens} structural tokens, ${res.bytes} bytes)${stop}`);
+  for (const f of [...res.errors, ...res.seams]) {
+    const span = f.endOffset !== undefined ? `off ${f.offset}→${f.endOffset}` : `off ${f.offset}`;
+    const sev = f.severity === 'warning' ? 'seam' : 'error';
+    console.log(`       • [${sev}] line ${f.line}: ${f.kind} '${f.char}'  (${span})${f.note ? ' — ' + f.note : ''}`);
   }
 }
 
@@ -83,6 +87,10 @@ function main() {
                    'demo-lexical.js', 'demo.js', 'token-tags.js', 'tokenizer.js', 'validate.js']) {
     report(validateFile(f, JS_TABLE));
   }
+  console.log('\nC_TABLE vs real C (self-contained vs a fragment with seams):');
+  report(validateFile('samples/sample.c', C_TABLE));
+  report(validateFile('samples/fragment.inc.c', C_TABLE));
+
   console.log('\nPYTHON_TABLE vs a real Python file:');
   report(validateFile('samples/sample.py', PYTHON_TABLE));
   console.log('\nXML_TABLE vs a real XML fragment:');

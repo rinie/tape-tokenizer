@@ -170,3 +170,78 @@ it recognizes it and emits a **gated** delimiter (`string(gated)`), and the
 self-check against the hand-written `C_TABLE` (which now carries the same gated
 spec) still matches. The general lesson: harvesting is not binary accept/reject
 — some highlighting scopes map to *context-gated* structure.
+
+---
+
+# C is two structure systems on one file — and the seams between them
+
+C source is the line-based preprocessor *combined with* the free-form `{}`
+language. Both are nesting structures; they share our one tape:
+
+| family | delimiter | matched by | layer |
+|---|---|---|---|
+| `(){}[]` | single char | close char | free-form |
+| `#if … #endif` | line keyword | directive keyword | line-based |
+
+`C_TABLE` enables the second family with `preprocessor: true`. `#if` / `#ifdef`
+/ `#ifndef` open (`?` in the projection), `#elif` / `#else` mark a branch (`:`),
+`#endif` closes (`;`) — a mnemonic ternary shape `?…:…;`. They are keyword-
+matched (interned, O(1)) and live on the same stack as the braces.
+
+## We scan as-written — we do NOT expand `#include`
+
+This is deliberate and breadth-first. A standalone, well-formed file proves
+itself balanced on its own terms. A file whose structure only resolves across an
+include boundary cannot — and **that is exactly the signal we want to surface**.
+
+Such a file is reported as having **seams**: `selfContained()` is false and
+`seams()` lists the boundaries that cross the file edge. Crucially these are
+**warnings, not errors** — the file simply isn't a clean standalone text file.
+The repair map separates the two axes:
+
+- `severity: 'error'` — a true malformation that stops the scan (an unterminated
+  multi-line token).
+- `severity: 'warning'` — a **seam**: structure that doesn't close within the
+  file (`unclosed-at-eof`), a closer with no opener (`unopened-at-bof`), or a
+  `crossing` where the two families interleave instead of nest.
+
+## The two families can interleave, not just nest
+
+When `#if` straddles a `{ }` (different branches with different braces), the
+families cross rather than nest — the same shape as XML's `<b><i></b>`. The
+tolerant close (shared with XML) reports each crossing and recovers:
+
+```
+#if FOO
+    void f() {
+#else
+    void f() { other();
+#endif
+}
+```
+→ two `crossing '{'` findings + one `unclosed-cond` seam. Reported, never
+faulted, never "fixed" by guessing.
+
+## Real fragment, validated
+
+`samples/fragment.inc.c` is a real-world lousy include — an `.inc` that opens a
+`#if` and a `{` it expects the includer to close:
+
+```
+$ node validate.js
+  ✓ balanced     samples/sample.c           (self-contained)
+  ⚠ 2 seam(s)    samples/fragment.inc.c
+       • [seam] line 6: unclosed-cond 'if'  (off 305→535) — not self-contained …
+       • [seam] line 8: unmatched-open '{'  (off 362→535) — not self-contained …
+```
+
+The seam carries **both boundaries** (where it opened → EOF). See
+`demo-seams.js` for the full set: self-contained guard, fragment, brace-opening
+macro, the interleave crossing, and a stray `#endif`.
+
+## Takeaway
+
+Two structure systems, one tape, scanned before the preprocessor runs. Files
+that close within themselves are clean; files with strange seams across include
+boundaries are **warned about, not rejected** — the scanner observes and
+reports, it does not enforce or expand.
