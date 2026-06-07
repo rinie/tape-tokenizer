@@ -49,6 +49,32 @@ swallowed in silence.** Severity is not intrinsic to a finding — the scanner
 only observes (Gutenberg-neutral); provenance decides what the observation
 *means*. Keep that seam open: the scanner must never bake in a verdict.
 
+### Why be liberal — Chesterton's Fence
+
+Postel says *be liberal*; **Chesterton's Fence** says *why*. Don't tear down a
+structure you don't understand: an unbalanced bracket or an unclosed `#if` in
+someone else's header is not self-evidently wrong — it may be load-bearing (a
+seam that closes across an `#include`, a deliberate `.inc` fragment idiom).
+Rejecting the unexplained is arrogance, so we **preserve it on the tape and
+merely report it**.
+
+This keys directly to provenance and sharpens `lib` / `own` into something
+deeper than "be nice to libraries":
+
+- You may judge strictly only the fences **you built and understand** — your own
+  code, held to closing within itself → **errors**.
+- The fences **others built**, whose reason you can't see from this file, you
+  preserve and merely note → **warnings**.
+- Authorship *is* understanding *is* the license to judge.
+
+The one hard line — *only refuse outright corruption* — is Chesterton-exact:
+the fence comes down only once you understand it. An unterminated token running
+to EOF is the case we genuinely *do* understand (there is no terminator; to
+continue is to invent one), so that is where we stop. And even there we tear
+nothing down — we refuse to *build* a fake fence by guessing the end.
+
+> **Don't destroy the unexplained; don't fabricate the absent.**
+
 ## 2. The real work is the lexical table, not the bracket counting
 
 Counting `{}[]()` onto a tape is ~200 lines and trivial. **The generality lives entirely in knowing which brackets to *ignore*** — those inside string literals, char literals, and comments:
