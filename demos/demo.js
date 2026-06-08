@@ -1,6 +1,6 @@
 // demo.js  —  run with: node demo.js
-import { Tokenizer } from './tokenizer.js';
-import { T, TAG_LABEL } from './token-tags.js';
+import { Tokenizer } from '../tokenizer.js';
+import { T, TAG_LABEL } from '../token-tags.js';
 
 const src = `
 async function fetchUser(id) {

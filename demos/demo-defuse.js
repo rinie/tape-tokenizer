@@ -1,7 +1,7 @@
 // demo-defuse.js — run with: node demo-defuse.js
 // Breadth-first def/use projection (§13a spike): see the def-before-use shape of
 // depth-first-organised code without drawing the DAG.
-import { analyze, defUseOutline, useBeforeDef, topoOrder } from './defuse.js';
+import { analyze, defUseOutline, useBeforeDef, topoOrder } from '../defuse.js';
 
 const src = `
 function helper(x) {

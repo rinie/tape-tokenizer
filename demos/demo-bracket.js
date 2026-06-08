@@ -1,5 +1,5 @@
 // demo-bracket.js  —  run with: node demo-bracket.js
-import { BracketScanner } from './bracket-scanner.js';
+import { BracketScanner } from '../bracket-scanner.js';
 
 const scanner = new BracketScanner();
 

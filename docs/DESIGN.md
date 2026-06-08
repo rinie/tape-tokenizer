@@ -1,5 +1,14 @@
 # JS/TS Tape Tokenizer — Design Documentation
 
+> **Scope note.** This document describes the **original value-token tape**
+> (`tokenizer.js` + `token-tags.js`): a 64-bit-per-token flat tape with an intern
+> pool and mnemonic tag bytes. It is still accurate for that layer. The project
+> later grew a separate **tolerant structural scanner** (`lexical-scanner.js`,
+> `scan.js`, …) — its design, philosophy, and direction live in
+> [`tape-parser-design-decisions.md`](tape-parser-design-decisions.md), and the
+> history of both is in [`../CHANGELOG.md`](../CHANGELOG.md). Read this for the
+> tag-byte/tape mechanics; read the other for the structural-parser thinking.
+
 ## Overview
 
 A two-pass tokenizer for JavaScript/TypeScript that produces a **flat tape** of

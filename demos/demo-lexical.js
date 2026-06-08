@@ -1,5 +1,5 @@
 // demo-lexical.js  —  run with: node demo-lexical.js
-import { LexicalScanner, JS_TABLE, XML_TABLE } from './lexical-scanner.js';
+import { LexicalScanner, JS_TABLE, XML_TABLE } from '../lexical-scanner.js';
 
 const sc = new LexicalScanner();
 
