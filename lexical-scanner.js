@@ -77,6 +77,22 @@ function isNameChar(code) {
          code === 0x2D || code === 0x5F || code === 0x3A || code === 0x2E;
 }
 
+// identifier bytes (for the regex value-position classifier)
+function isIdentStartCode(c) {
+  return (c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A) || c === 0x5F || c === 0x24 || c > 127;
+}
+function isIdentPartCode(c) {
+  return isIdentStartCode(c) || (c >= 0x30 && c <= 0x39);
+}
+
+// Keywords after which a `/` opens a regex, not a division. After any other
+// identifier (a value) `/` is division. This is the one token of left-context
+// the regex span needs — see §2a in the design doc.
+const REGEX_PRECEDING_KW = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+  'do', 'else', 'yield', 'await', 'throw', 'case',
+]);
+
 // ── LexicalScanner ────────────────────────────────────────────────────────────
 
 class LexicalScanner {
@@ -147,7 +163,13 @@ class LexicalScanner {
     const blockComments = table.blockComments || [];
     const strings       = table.strings       || [];
     const preproc       = !!table.preprocessor;
+    const hasRegex      = !!table.regex;
     const len = src.length;
+
+    // Regex disambiguation needs one token of left context: is the previous
+    // significant token a *value* (→ `/` is division) or not (→ `/` opens a
+    // regex)? Tracked as we scan. Starts false (regex allowed at start of input).
+    let prevValue = false;
 
     // Unified stack of open structural tokens, both families:
     //   { idx, family: 'brace'|'cpp', code, name? }
@@ -249,6 +271,7 @@ class LexicalScanner {
           } else {
             i = r.end;          // just past the closing delimiter
           }
+          prevValue = true;     // a string/template literal is a value
           skipped = true;
           break;
         }
@@ -280,13 +303,28 @@ class LexicalScanner {
         // #include / #define / #pragma etc. are single-line — not structural.
       }
 
-      // 4. structural brackets
       const code = src.charCodeAt(i);
+
+      // 3.6 regex literal vs division — the only delimiter whose START is
+      // ambiguous. In value position a `/` is division; otherwise it opens a
+      // regex. The END is stateful: `/` closes only when not inside a `[ ]`
+      // class, `\` escapes, and a newline means it was never a regex. Character
+      // classification + one token of left context — no regex engine. (§2a)
+      if (hasRegex && code === 0x2F && !prevValue) {       // '/'
+        const end = this._skipRegex(src, i);
+        if (end !== -1) { i = end; prevValue = true; continue; }
+        // not a valid single-line regex — fall through; treat '/' as an operator
+      }
+
+      // 4. structural brackets
       if (code < 128 && IS_OPEN[code]) {
         const idx = this._emit(code, i, depth);
         stack.push({ idx, family: 'brace', code });
         depth++;
-      } else if (code < 128 && IS_CLOSE[code]) {
+        prevValue = false;                  // after '(' '[' '{', a '/' is a regex
+        i++; continue;
+      }
+      if (code < 128 && IS_CLOSE[code]) {
         depth = depth > 0 ? depth - 1 : 0;
         const idx = this._emit(code, i, depth);
         const top = stack[stack.length - 1];
@@ -298,6 +336,22 @@ class LexicalScanner {
           // not a clean top match — tolerant search (may reveal a crossing seam)
           closeStructural(idx, 'brace', (e) => e.family === 'brace' && CLOSE_OF[e.code] === code);
         }
+        prevValue = (code === 0x29 || code === 0x5D);     // ')' ']' end a value; '}' does not
+        i++; continue;
+      }
+
+      // Position classification for the regex gate (only needed when regex is on).
+      // Identifiers are values unless they are a keyword that introduces an
+      // expression (return, typeof, …); numbers are values; operators are not.
+      if (hasRegex) {
+        if (isIdentStartCode(code)) {
+          let k = i + 1;
+          while (k < len && isIdentPartCode(src.charCodeAt(k))) k++;
+          prevValue = !REGEX_PRECEDING_KW.has(src.slice(i, k));
+          i = k; continue;
+        }
+        if (code >= 0x30 && code <= 0x39) { prevValue = true; i++; continue; }   // digit → value
+        if (code !== 0x20 && code !== 0x09 && code !== 0x0A && code !== 0x0D) prevValue = false; // operator
       }
       i++;
     }
@@ -322,6 +376,31 @@ class LexicalScanner {
       if (c >= 0x61 && c <= 0x7A) { w += src[p]; p++; } else break;  // a-z
     }
     return w || null;
+  }
+
+  // Scan a regex literal from its opening '/'. STATEFUL END: '/' closes only
+  // when not inside a '[ ]' character class; '\' escapes the next byte; a
+  // newline means this was never a regex (they cannot span lines). Returns the
+  // index just past the trailing flags, or -1 to mean "not a regex — it's a '/'
+  // operator." No regex grammar is interpreted; we only delimit.
+  _skipRegex(src, i) {
+    const len = src.length;
+    let j = i + 1;
+    let inClass = false;
+    while (j < len) {
+      const c = src.charCodeAt(j);
+      if (c === 0x0A) return -1;             // newline → not a single-line regex
+      if (c === 0x5C) { j += 2; continue; }  // backslash escapes the next byte
+      if (c === 0x5B) inClass = true;        // '['  enter char class
+      else if (c === 0x5D) inClass = false;  // ']'  leave char class
+      else if (c === 0x2F && !inClass) {     // '/'  closes only outside a class
+        j++;
+        while (j < len && isIdentPartCode(src.charCodeAt(j))) j++;   // flags
+        return j;
+      }
+      j++;
+    }
+    return -1;                               // EOF before close → not a regex
   }
 
   // Scan a string/template starting at the opening delimiter.
@@ -609,6 +688,8 @@ class LexicalScanner {
 
 const JS_TABLE = {
   mode: 'brackets',
+  regex: true,   // recognise /…/ literals (context-start, stateful-end) so their
+                 // brackets/quotes don't pollute balance. See §2a / _skipRegex.
   lineComments: ['//'],
   blockComments: [{ open: '/*', close: '*/' }],
   strings: [

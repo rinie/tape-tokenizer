@@ -86,6 +86,52 @@ Counting `{}[]()` onto a tape is ~200 lines and trivial. **The generality lives 
 
 **This is data, not code.** Keep a small **per-language lexical table** describing string/comment/escape/raw delimiters and keyword lists. The scanner stays language-agnostic; the table is the only thing that changes per language. (Same split as routeMap/procedureMap in the OpenAPI work: the table is the swappable semantic layer, the scanner is the fixed Gutenberg infrastructure.)
 
+## 2a. Recognition taxonomy — every span classified by start × end (+ the inside rule)
+
+There is no parsing anywhere. **Every lexical span is *delimited by character
+classification*, never parsed** — match a start, consume everything-except-the-
+close-or-escape, match an end. What differs between spans is only how hard the
+start and the end are to *recognise*. Classify each delimiter on two axes:
+
+**Start — recognise the opener:**
+- **simple** — one unambiguous byte (`"` `'` `` ` ``). Pure 1-byte classification.
+- **complex** — a multi-byte prefix matched against an exception/prefix table
+  (`//` `/*` `<!--` `"""` `<![CDATA[`).
+- **context** — the byte is *ambiguous*; needs lookback. Token-class for `/`
+  (regex vs division); line-context for `<…>` (only after `#include`).
+
+**End — recognise the closer:**
+- **simple** — one byte (`"` closes `"`; newline closes `//`).
+- **complex** — a multi-byte sequence (`*/` `-->` `"""` `]]>`).
+- **stateful** — a byte that closes only *in a state* (regex `/` only when not
+  inside a `[ ]` class).
+- **parameterised** — the closer is fixed by what the *start* captured (Rust
+  `r###"` → `"###`; a here-doc's label; matched hash count). The hardest end.
+
+**Inside — the one universal rule:** consume every byte *except two classes* —
+the **closer** and the **escape**. The escape (`\`) is the in-span exception that
+defuses a would-be closer. Two orthogonal modifiers ride on top: **nesting** (a
+depth counter — Rust nested `/* */`, template `${}`) and **multiline vs
+newline-bounded**.
+
+So a table entry is `{ startKind, startMatch, endKind, endMatch, escape,
+nesting?, multiline?, context? }`. Worked examples:
+
+| span | start | end | note |
+|---|---|---|---|
+| `"…"` string | simple | simple | escape `\` |
+| `/* … */` | complex | complex | — |
+| `"""…"""` (Python) | complex | complex | multiline |
+| `<…>` include (C) | context (line) | simple | §1-gate |
+| **regex `/…/`** | **context (token)** | **stateful (`[ ]`)** | the only context+stateful — "the hardest simple thing" |
+| Rust `r###"…"###` | context+param | parameterised | future |
+| here-doc | complex+param | parameterised | future |
+
+Regex is implemented (`_skipRegex` + a `prevValue` left-context tracker, JS only):
+character classification plus **one token of left context** for the ambiguous
+`/`. No regex engine — we only *delimit* the literal so its quotes/brackets stop
+polluting balance.
+
 ## 3. Input model: byte-level UTF-8, not codepoints
 
 Scan **bytes**, do not decode to codepoints. `{}[]()`, quotes, and comment markers are all ASCII, and ASCII bytes can never appear as UTF-8 continuation bytes — so a pure byte scan is correct, fast, and never has to decode. (Page-boundary, not document.) Multibyte UTF-8 inside identifiers/strings just flows through as opaque bytes.

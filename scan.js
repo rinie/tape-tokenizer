@@ -73,9 +73,9 @@ EXAMPLES
   node scan.js --defuse app.js           Balance + def/use on a JS file.
   type foo.c | node scan.js -l c -        Read one file from stdin (Windows).
 
-KNOWN LIMITATION
-  JS regex literals are not yet modelled: a regex containing a quote (e.g.
-  /['"]/ ) is read as a string and can produce false seams on regex-heavy JS.
+NOTES
+  JS regex literals (/.../ ) are recognised — their quotes and brackets do not
+  affect balance, and division is told apart from a regex by context.
 `;
 
 function fail(msg) {

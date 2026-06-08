@@ -46,9 +46,16 @@ $ node validate.js js samples/regex-hazard.js
 
 `/['"]/` — the scanner reads the `'` as a string start and swallows real
 structure until the next quote. **Cause:** a regex literal is a context the
-table doesn't model. **Fix (deferred):** add a `regex` span kind whose start is
-disambiguated by the previous significant token (the `_isRegexStart` heuristic
-already exists in `tokenizer.js`). Tracked as future table work.
+table doesn't model.
+
+**RESOLVED.** `JS_TABLE` now has `regex: true`. The fix was *character
+classification, not a regex engine* (§2a): a `prevValue` tracker supplies one
+token of left context to disambiguate `/` (division in value position, else a
+regex), and `_skipRegex` delimits the literal with a stateful end (`/` closes
+only outside a `[ ]` class; `\` escapes; a newline means it was never a regex).
+`samples/regex-cases.js` exercises quotes-in-class, brackets-in-class, escaped
+slashes, `return /…/`, and real division — all balanced. `regex-hazard.js` (the
+demonstration of the hole) now scans clean.
 
 ### 2. Python f-string interpolation is treated as opaque (deferred)
 
