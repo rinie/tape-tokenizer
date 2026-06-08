@@ -164,6 +164,9 @@ The rule (this is the waterline): **0-based below the waterline (offsets, depth,
 - Windows dev environment: prefer `cmd` over PowerShell over bash for shell commands.
 - `git clone` with `--depth 1` unless history is needed.
 - All code-related discussion and comments in **English**.
+- **Branching workflow:** the agent is the *only* brancher — every change goes on
+  a topic branch with a PR; the repo owner resolves to `main` at each resting
+  point. The agent does not merge or delete branches without being asked.
 
 ## 12. Open questions to resolve with the repo owner
 
@@ -239,11 +242,26 @@ tokens index a partner (the jump). One uniform tape.
 **Payoffs.**
 - **O(1) value equality for *all* value kinds**, not just identifiers: two `3.14`
   literals or two `"foo"` strings are equal iff their indices are equal.
-- **Per-kind dedup** (optional policy): repeated literals collapse to one pool
-  entry — constant tables, string interning, repeated-magic-number detection.
 - **Inspectable.** A tape dump shows `IDENT id=4 "foo"`, `NUMBER n=2 "3.14"`,
   `STRING s=7 "bar"` — the values listed alongside the lexer, the dense tape
   staying numeric.
+
+**Dedup is keyed to uniqueness — intern only where the vocabulary is limited.**
+- **Identifiers (and keywords): intern / dedup.** Their uniqueness is limited — a
+  small vocabulary hammered over and over (`i`, `foo`, `this`) — so collapsing the
+  many occurrences to one entry pays: O(1) compare, and the occurrence list is the
+  cross-reference 13a wants.
+- **Numbers, strings, templates, regex, chars: don't bother — store one entry per
+  occurrence.** They are mostly unique, so interning rarely pays its keep; the
+  **waste of storing duplicates is acceptable** and the scan stays simpler/faster.
+  (Equality still works via the offset/length lexeme; you just don't pre-collapse.)
+- **Whitespace: a first-class indexed kind, and it interns like identifiers.**
+  Indentation runs are a tiny, heavily-repeated vocabulary (`\n    `, `\n\t\t`), so
+  dedup is very effective. Promoting whitespace from *sided trivia* (§5) to an
+  indexed token makes the tape **lossless** — source reconstructs byte-for-byte
+  from tape + pools — and, crucially for 13a, a moved span **carries its own
+  leading/trailing whitespace and indentation** instead of losing its formatting.
+  Comments fold in the same way.
 
 **It is the substrate for 13a.** If each pool entry also records the **source
 offsets where it occurred**, the value table becomes a cross-reference index:
@@ -256,7 +274,7 @@ occurrence index that 13a queries.
   no-alloc interning option) vs a **decoded/parsed value** (escapes resolved,
   number parsed). Lossless leans to keeping the lexeme — `0x1F_00` and `7936` are
   the same value but different tokens; keep the text, parse on demand.
-- Dedup is per-kind policy, not mandatory — idents/strings benefit; numbers
-  sometimes don't.
+- Dedup keyed to uniqueness (above): intern identifiers/keywords/whitespace;
+  store-per-occurrence for numbers/strings/regex/chars (waste acceptable).
 - Stays positional/Gutenberg: pool entries are keyed by value but carry offsets,
   so the value column is still a *position* index, not a semantic claim.
