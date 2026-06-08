@@ -1,0 +1,14 @@
+# Normalise all text files to LF in the repository and the working tree.
+# Windows checkouts (core.autocrlf) otherwise convert to CRLF and Git warns on
+# every add. `text=auto` lets Git detect text vs binary; `eol=lf` pins the
+# working-tree line ending so there is nothing to convert.
+* text=auto eol=lf
+
+# Explicit for clarity (all text, all LF):
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.c    text eol=lf
+*.h    text eol=lf
+*.py   text eol=lf
+*.xml  text eol=lf
