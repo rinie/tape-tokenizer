@@ -208,8 +208,23 @@ The rule (this is the waterline): **0-based below the waterline (offsets, depth,
 - **No inline exports** — collect exports at the bottom of the file.
 - ESLint: **`eslint-config-airbnb-extended`** (ESLint 9 flat config; TS-aware).
 - Windows dev environment: prefer `cmd` over PowerShell over bash for shell commands.
+  (The shell preference is for other reasons — *not* line endings.)
 - `git clone` with `--depth 1` unless history is needed.
 - All code-related discussion and comments in **English**.
+- **Surface conventions — owner develops on Windows but prefers the unix forms.**
+  Default to **lowercase**, **LF**, and **`/` directory separators** in anything
+  the project emits (paths in output, generated files), even on Windows. These
+  cost little and read consistently.
+- **Accept both, warn for the exception (Postel at the byte level).** Treat the
+  harmless regional variants as equivalent *input* and normalise on output:
+  - **Line endings** — `\n`, `\r\n` (and a bare `\r`) are *"A4 vs Letter — a
+    different paper size in the same printer."* Accept them interchangeably; the
+    scanner reads bytes, so `\r` flows through as harmless trivia. Reserve a
+    **warning** for the genuine misfeed: a lone `\r` used as a line break, or
+    **mixed** endings within one file — not for the mere presence of CRLF.
+  - **Path slashes** — accept `\` or `/` on input; emit `/` (see `scan.js`
+    `showPath`).
+  - **Case** — prefer lowercase; warn on a true inconsistency, not on the choice.
 - **Branching workflow:** the agent is the *only* brancher — every change goes on
   a topic branch with a PR; the repo owner resolves to `main` at each resting
   point. The agent does not merge or delete branches without being asked.

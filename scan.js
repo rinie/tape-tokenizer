@@ -88,6 +88,12 @@ function detectLang(path) {
   return EXT_LANG[extname(path).toLowerCase()] || null;
 }
 
+// Display paths with unix '/' regardless of OS. We accept either slash on input
+// (Node's path layer is happy with both); we just emit one consistent form.
+function showPath(p) {
+  return String(p).replace(/\\/g, '/');
+}
+
 function lineOf(src, offset) {
   let line = 1;
   for (let i = 0; i < offset && i < src.length; i++) if (src.charCodeAt(i) === 0x0A) line++;
@@ -99,7 +105,7 @@ function collectFiles(paths, recurse) {
   const out = [];
   const visit = (p) => {
     let st;
-    try { st = statSync(p); } catch { process.stderr.write(`scan: cannot stat '${p}'\n`); return; }
+    try { st = statSync(p); } catch { process.stderr.write(`scan: cannot stat '${showPath(p)}'\n`); return; }
     if (st.isDirectory()) {
       if (!recurse) return;
       if (SKIP_DIRS.has(basename(p))) return;
@@ -145,7 +151,7 @@ function reportFile(path, lang, res, quiet) {
   if (res.errors.length) verdict = `✗ ${res.errors.length} error(s)`;
   else if (res.seams.length) verdict = `⚠ ${res.seams.length} seam(s)`;
   else verdict = '✓ clean';
-  process.stdout.write(`  ${verdict.padEnd(14)} ${path}  [${lang}]\n`);
+  process.stdout.write(`  ${verdict.padEnd(14)} ${showPath(path)}  [${lang}]\n`);
   for (const f of [...res.errors, ...res.seams]) {
     const where = f.line !== undefined ? `line ${f.line}` : (f.detail || '');
     const span = f.endOffset !== undefined ? ` (off ${f.offset}→${f.endOffset})` : '';
@@ -217,7 +223,7 @@ function main() {
     const lang = values.lang || detectLang(path);
     if (!lang) { totals.skipped++; continue; }
     let src;
-    try { src = readFileSync(path, 'utf8'); } catch { process.stderr.write(`scan: cannot read '${path}'\n`); totals.skipped++; continue; }
+    try { src = readFileSync(path, 'utf8'); } catch { process.stderr.write(`scan: cannot read '${showPath(path)}'\n`); totals.skipped++; continue; }
     const res = scanOne(src, lang, policy, values.defuse);
     reportFile(path, lang, res, values.quiet);
     totals.files++;
