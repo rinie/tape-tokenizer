@@ -5,7 +5,7 @@
 // expanding #include. A self-contained file proves itself well-formed. A file
 // whose structure only closes across an include/file boundary shows up as a
 // SEAM — a warning, not an error: "this isn't a clean standalone text file."
-import { LexicalScanner, C_TABLE } from './lexical-scanner.js';
+import { LexicalScanner, C_TABLE } from '../lexical-scanner.js';
 
 const sc = new LexicalScanner();
 

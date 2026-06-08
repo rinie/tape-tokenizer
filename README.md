@@ -1,121 +1,96 @@
 # tape-tokenizer
 
-A two-pass JavaScript/TypeScript tokenizer that produces a **flat tape** of
-64-bit entries — inspired by the [simdjson](https://github.com/simdjson/simdjson)
-tape structure. No heap-allocated token tree nodes, cache-friendly sequential
-memory layout.
+A **tolerant, positional, structural tape scanner** for source code — and the
+flat-tape tokenizer it grew out of. It walks source as a byte stream and records
+the `(){}[]` structure (plus XML tags and C preprocessor conditionals) onto a
+single flat tape, **never faulting**: imbalance is reported as a *value* (a
+repair map with both boundaries), not thrown as an error.
 
-## Why a tape?
+Inspired by the [simdjson](https://github.com/simdjson/simdjson) tape: no
+heap-allocated tree, cache-friendly sequential layout, and **classification, not
+parsing** — every lexical span is *delimited* by character classification, never
+grammared into an AST.
 
-Traditional tokenizers allocate a linked list or tree of token objects.
-Each `new Token(...)` touches the GC heap, fragments cache lines, and requires
-pointer-chasing to iterate. A tape packs everything into two parallel
-`Uint32Array`s — sequential iteration = sequential memory reads = hardware
-prefetcher paradise.
+## What it does
 
-## Features
-
-- **Flat tape output** — two parallel `Uint32Array`s (`tags` + `payloads`), no object allocation per token
-- **O(1) subtree skipping** — bracket jump pointers let you skip a whole function body or argument list in one read
-- **Intern pool** — identifiers are interned; comparison is an integer `===`, not a string compare
-- **Mnemonic tag bytes** — self-describing in a hex dump; punctuation uses exact ASCII values
-- **Number / Double distinction** — integer vs. floating-point literals get separate tags
-- **Single-pass bracket patching** — opener/closer pairs are linked during the scan, not in a post-pass
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `token-tags.js` | Tag byte constants, `TAG_NAME` reverse map, `KEYWORDS` map |
-| `tokenizer.js`  | `Tokenizer` class — `tokenize(src)` → `{ tags, payloads, internPool }` |
-| `demo.js`       | Example usage, tape dump, subtree-skip demo |
-| `DESIGN.md`     | Full design documentation |
+- **Structural balance + seams.** Scans `(){}[]` on bytes, ignoring brackets
+  inside strings/comments/regex. Unbalanced input never throws — it surfaces as
+  findings (unmatched, orphan, crossing, unterminated), each with its source
+  offset(s).
+- **Per-language lexical tables.** JS, C, Python, XML. The scanner is
+  language-agnostic; the swappable table is the only thing that changes. Tables
+  can be **harvested** from real TextMate grammars (`harvest.js`).
+- **Two structure systems on one tape.** Free-form braces *and* the line-based C
+  preprocessor (`#if … #endif`) coexist; where they interleave instead of nest,
+  the crossing is reported (a *seam*), never enforced.
+- **Provenance policy.** A seam is a **warning for library code**, an **error for
+  your own** — the two halves of Postel's Law (be liberal in what you accept, be
+  conservative in what you send). See the design spine.
+- **Breadth-first projections.** `outline()` for the depth-0 skeleton;
+  `defuse.js` for a def/use view (top-level adjacency + use-before-def) *without
+  materialising the dependency DAG*.
 
 ## Quick start
 
-```js
-import { tokenize } from './tokenizer.js';
-
-const src = `const x = 1 + 2;`;
-const { tags, payloads, internPool } = tokenize(src);
-
-for (let i = 0; i < tags.length; i++) {
-  console.log(i, tags[i].toString(16).padStart(2, '0'), payloads[i]);
-}
-```
-
-Run the included demo:
-
 ```cmd
-node demo.js
+node scan.js src\               :: walk a tree (auto-detect language)
+node scan.js --own src\         :: your code: seams are errors
+node scan.js -l c kernel\*.c    :: force the C table
+node scan.js --defuse app.js    :: balance + def/use projection (JS)
+node scan.js --help             :: full usage
 ```
 
-## Tape entry layout
+`scan.js` exits `0` clean, `1` if findings, `2` on a usage error (grep/linter
+convention).
 
-Each token occupies one 64-bit entry split across two parallel `Uint32Array`s:
-
-```
-bits 63–56   bits 55–48   bits 47–32    bits 31–0
-──────────   ──────────   ──────────    ──────────
- tag (u8)    flags (u8)   reserved      payload (u32)
-```
-
-### Tag byte highlights
-
-Punctuation uses exact ASCII — a hex dump is directly human-readable:
+## Repository layout
 
 ```
-0x28 (   0x29 )   0x5B [   0x5D ]   0x7B {   0x7D }
+scan.js              CLI front end (extension detection, recursive walk, policy)
+validate.js          batch validator + built-in self-test suite
+lexical-scanner.js   the structural scanner + the lexical tables (JS/C/PY/XML)
+bracket-scanner.js   milestone-1 reference: bracket-only scanner
+harvest.js           derive a lexical table from a *.tmLanguage.json grammar
+defuse.js            breadth-first def/use projection (on the value-token tape)
+tokenizer.js         the original flat value-token tape (idents + intern pool)
+token-tags.js        tag-byte constants for tokenizer.js
+demos/               runnable demos for each piece (node demos/demo-*.js)
+samples/             real files used for validation (incl. a C TextMate grammar)
+docs/                design docs (see below)
+CHANGELOG.md         progress and setbacks across the PRs
 ```
 
-Literals use uppercase initials:
+## The two layers
 
-```
-0x49 I  IDENT     0x4E N  NUMBER    0x44 D  DOUBLE
-0x52 R  REGEX     0x53 S  STRING    0x58 X  TEMPLATE
-```
+1. **Value-token tape** (`tokenizer.js` + `token-tags.js`) — the original work: a
+   64-bit-per-token flat tape with an intern pool and mnemonic tag bytes, where
+   every token is `(tag, flags, payload)`. Documented in
+   [`docs/DESIGN.md`](docs/DESIGN.md).
+2. **Structural scanner** (`lexical-scanner.js` and friends) — the tolerant,
+   positional structure-and-seam layer this project is mostly about. Documented
+   in [`docs/tape-parser-design-decisions.md`](docs/tape-parser-design-decisions.md).
 
-The most-used keywords get the best printable mnemonic characters (e.g.
-`0x69 i` = `KW_IF`, `0x63 c` = `KW_CONST`, `0x72 r` = `KW_RETURN`).
-Rare keywords occupy the `0x80+` range. See [`DESIGN.md`](DESIGN.md) for
-the full tag assignment rationale.
+`defuse.js` rides on layer 1 (it needs interned names); `scan.js` / `validate.js`
+ride on layer 2.
 
-### Payload semantics
+## Docs
 
-| Tag | Payload |
-|-----|---------|
-| Keyword | Source byte offset |
-| `IDENT` | Intern pool ID |
-| `NUMBER` / `DOUBLE` | Source byte offset |
-| `STRING` | Index into string side-buffer |
-| `LBRACE` / `LPAREN` / `LBRACKET` | Tape index of matching closer |
-| `RBRACE` / `RPAREN` / `RBRACKET` | Tape index of matching opener |
+- [`docs/tape-parser-design-decisions.md`](docs/tape-parser-design-decisions.md)
+  — the living design spine: philosophy (Postel's Law + Chesterton's Fence), the
+  recognition taxonomy (§2a), and future directions (§13: def/use, value/index,
+  structure-aware merge).
+- [`docs/lexical-tables-findings.md`](docs/lexical-tables-findings.md) — what
+  validating tables against real files revealed (harvested-table holes, the
+  `<…>` include hazard, the resolved JS regex hole).
+- [`docs/DESIGN.md`](docs/DESIGN.md) — the original value-token tape design.
+- [`CHANGELOG.md`](CHANGELOG.md) — the progress-and-setbacks history.
 
-### O(1) subtree skip example
+## Status
 
-```js
-// skip the body of a function without touching every token inside
-const openIdx = i;               // tape index of '{'
-const closeIdx = payloads[i];    // jump directly to matching '}'
-i = closeIdx + 1;
-```
-
-## Two-pass architecture
-
-**Pass 1 — scan**
-Walks the source buffer character by character, classifies tokens, writes
-tape entries, and patches bracket jump pointers on the fly using a stack.
-
-**Pass 2 — consumer**
-Walks the flat arrays. Subtree skipping, identifier lookup, and keyword
-dispatch are all O(1) integer operations.
-
-## Extending to TypeScript
-
-TypeScript-specific keywords can be added starting at `0x8E` (see
-[`DESIGN.md`](DESIGN.md#extending-for-typescript)). The reserved flags byte
-is earmarked for optional-chain (`?.`), spread (`...`), and type-context
-annotations.
+Working prototype, JavaScript, no dependencies (Node 18+ for `node:util`
+`parseArgs`; Node 22+ runs the ESM `.js` files without a `package.json`). Tables
+are linter-grade and tolerant, not a compiler. See the CHANGELOG for what's
+landed and what's still sketched.
 
 ## License
 

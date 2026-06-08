@@ -1,7 +1,7 @@
 // demo-directive.js  —  run with: node demo-directive.js
 // Proves the line-context gate: `<…>` is a header-name string ONLY on a
 // #include / #import line; everywhere else `<` and `>` stay operators.
-import { LexicalScanner, C_TABLE } from './lexical-scanner.js';
+import { LexicalScanner, C_TABLE } from '../lexical-scanner.js';
 
 const sc = new LexicalScanner();
 

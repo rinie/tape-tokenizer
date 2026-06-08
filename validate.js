@@ -99,8 +99,9 @@ function main() {
   // Built-in suite: scan the repo's own source (real, known-good files).
   console.log('── built-in suite ───────────────────────────────────────────');
   console.log('JS_TABLE vs the repo\'s own JavaScript (own code — must be self-contained):');
-  for (const f of ['bracket-scanner.js', 'lexical-scanner.js', 'demo-bracket.js',
-                   'demo-lexical.js', 'demo.js', 'token-tags.js', 'tokenizer.js', 'validate.js']) {
+  for (const f of ['bracket-scanner.js', 'lexical-scanner.js', 'defuse.js', 'harvest.js',
+                   'scan.js', 'token-tags.js', 'tokenizer.js', 'validate.js',
+                   'demos/demo-bracket.js', 'demos/demo-lexical.js', 'demos/demo-defuse.js']) {
     report(validateFile(f, JS_TABLE), 'own');
   }
   console.log('\nC_TABLE — same fragment, two provenances (the policy point):');
