@@ -171,3 +171,92 @@ The rule (this is the waterline): **0-based below the waterline (offsets, depth,
 - Whether the printable projection is a build-time debug helper only, or a first-class output format worth stabilizing.
 - Lenient-recovery policy for the repair map: just *report* imbalances, or also emit a *suggested* repaired nesting? (Default: report only; suggesting is a later, optional layer.)
 - Template-literal and here-doc nesting depth limits, if any.
+
+---
+
+## 13. Future directions (sketched, not yet committed)
+
+Two related ideas. They are one stack: 13b (a uniform value/index mapping per
+token) is the **substrate**; 13a (a breadth-first def/use projection) is the
+**query** that rides on it.
+
+### 13a. Breadth-first def/use projection — see depth-first code without drowning in the DAG
+
+**Goal.** Display the breadth-first properties of depth-first-organised code (the
+top-level shape, and def-before-use violations) without materialising the whole
+dependency DAG. Aimed at def-before-use refactoring.
+
+**The core realisation.** A DAG drowns you because you render *reachability* —
+all paths, transitively, across every depth. Don't. **Breadth-first means
+adjacency at one level, never transitive closure.** Peel the DAG one layer at a
+time; each layer is a flat table. The tape's **depth column** is the leash that
+keeps you on one slice; `outline()` already emits exactly that slice.
+
+**What's nearly free from today's tape.**
+- *Atomic spans.* Each depth-0 `{…}` is a top-level definition, and the jump
+  pointers give its bounds in O(1). Reordering definitions is cut-and-paste of
+  whole spans — no reparse.
+- *O(1) name identity* via the intern pool (the `tokenizer.js` lineage).
+- *Positional honesty.* Use-before-def is an offset comparison → a finding **with
+  both boundaries** (use offset + def offset), straight into the repair-map model.
+
+**What you add.** A second pass that, per depth-0 span, records
+`{ definedName, usedNames[], offset, span:[open,close] }` — the def is the ident
+before the depth-0 `(`/`{`; the uses are the interned idents inside. That yields a
+**flat adjacency** (top-level def → names it directly mentions): an O(n) edge
+list read as a table, not a sprawl. Then:
+- `useBeforeDef()` — a linear sweep; any use whose def is later in the file is a
+  finding, **severity by provenance** (lib = warning, own = error — Postel /
+  Chesterton carry over verbatim: a forward reference in your own code breaks the
+  discipline you opted into).
+- `topoOrder()` — a suggested def-before-use reordering of the atomic spans.
+  Honest part: a call graph is **not** a DAG — mutual recursion makes cycles.
+  Don't fail; report each strongly-connected component as a cluster that needs a
+  forward declaration to break. The cycle is a named finding, not a crash.
+
+**Caveats (linter-grade, not compiler-grade).** Needs names on the tape (rides on
+the intern-pool tape, not the structure-only scanner). It is positional and
+tolerant — it won't resolve *which* `foo` under overloading/shadowing. Do def/use
+**per scope level**; flattening nested scopes into one namespace brings the DAG
+complexity back. It's a lossy, human-facing projection in the same spirit as
+`toPrintable()`.
+
+### 13b. Uniform value/index mapping per token — the side-tables listed next to the lexer
+
+**Goal.** Every value-bearing token (identifier, number, string, template, regex,
+char, …) carries, as its dense-tape payload, an **index into a per-kind value
+pool**. The tape stays pure integers (the simdjson spirit already in the repo);
+the value pools are **listed next to the lexer output** as separate,
+human-inspectable columns.
+
+This *generalises the intern pool*. Identifiers already do it (intern id →
+`names[]`); strings already half-do it (side-buffer index). Make it uniform and
+per-kind: `IDENT → names[]`, `NUMBER/DOUBLE → numbers[]`, `STRING → strings[]`,
+`TEMPLATE/REGEX/CHAR → their pools`. Then every token is one shape —
+`(tag, flags, index)` — where value tokens index a value pool and structural
+tokens index a partner (the jump). One uniform tape.
+
+**Payoffs.**
+- **O(1) value equality for *all* value kinds**, not just identifiers: two `3.14`
+  literals or two `"foo"` strings are equal iff their indices are equal.
+- **Per-kind dedup** (optional policy): repeated literals collapse to one pool
+  entry — constant tables, string interning, repeated-magic-number detection.
+- **Inspectable.** A tape dump shows `IDENT id=4 "foo"`, `NUMBER n=2 "3.14"`,
+  `STRING s=7 "bar"` — the values listed alongside the lexer, the dense tape
+  staying numeric.
+
+**It is the substrate for 13a.** If each pool entry also records the **source
+offsets where it occurred**, the value table becomes a cross-reference index:
+every occurrence of `foo` → its offset list. That occurrence list *is* the
+use-list def/use needs. So 13b is not a separate feature — it is the symbol /
+occurrence index that 13a queries.
+
+**Open per-kind choices (honest).**
+- Store the **raw source slice** (offset+length, zero-alloc — the design doc's
+  no-alloc interning option) vs a **decoded/parsed value** (escapes resolved,
+  number parsed). Lossless leans to keeping the lexeme — `0x1F_00` and `7936` are
+  the same value but different tokens; keep the text, parse on demand.
+- Dedup is per-kind policy, not mandatory — idents/strings benefit; numbers
+  sometimes don't.
+- Stays positional/Gutenberg: pool entries are keyed by value but carry offsets,
+  so the value column is still a *position* index, not a semantic claim.
