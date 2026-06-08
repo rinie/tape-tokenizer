@@ -215,16 +215,19 @@ The rule (this is the waterline): **0-based below the waterline (offsets, depth,
   Default to **lowercase**, **LF**, and **`/` directory separators** in anything
   the project emits (paths in output, generated files), even on Windows. These
   cost little and read consistently.
-- **Accept both, warn for the exception (Postel at the byte level).** Treat the
-  harmless regional variants as equivalent *input* and normalise on output:
-  - **Line endings** — `\n`, `\r\n` (and a bare `\r`) are *"A4 vs Letter — a
-    different paper size in the same printer."* Accept them interchangeably; the
-    scanner reads bytes, so `\r` flows through as harmless trivia. Reserve a
-    **warning** for the genuine misfeed: a lone `\r` used as a line break, or
-    **mixed** endings within one file — not for the mere presence of CRLF.
+- **Two tiers, and don't confuse them.** "Observe and report, nothing swallowed
+  in silence" governs **structure** (brackets, seams, crossings) — those are
+  reported. **Cosmetic surface** (line endings, path slashes, case) carries no
+  structural meaning, so it gets the *liberal half of Postel only*: accept any
+  variant and **normalise silently — no warning**. A4-vs-Letter doesn't deserve a
+  warning light; it's the same printer, a different paper size.
+  - **Line endings** — `\n`, `\r\n`, a bare `\r`: all equivalent. The scanner
+    reads bytes, so `\r` flows through as harmless trivia. Accept silently; do
+    **not** flag CRLF, lone `\r`, or mixed endings. (Normalisation, if any,
+    belongs to `.gitattributes`, not to a finding.)
   - **Path slashes** — accept `\` or `/` on input; emit `/` (see `scan.js`
-    `showPath`).
-  - **Case** — prefer lowercase; warn on a true inconsistency, not on the choice.
+    `showPath`). No warning.
+  - **Case** — prefer lowercase (it reads more nicely); never warn on the choice.
 - **Branching workflow:** the agent is the *only* brancher — every change goes on
   a topic branch with a PR; the repo owner resolves to `main` at each resting
   point. The agent does not merge or delete branches without being asked.
