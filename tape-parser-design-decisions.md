@@ -287,3 +287,47 @@ occurrence index that 13a queries.
   store-per-occurrence for numbers/strings/regex/chars (waste acceptable).
 - Stays positional/Gutenberg: pool entries are keyed by value but carry offsets,
   so the value column is still a *position* index, not a semantic claim.
+
+### 13c. Structure-aware merge — a subforest, not a delta tree
+
+**The observation.** A git conflict is a *tape with self-describing sentinels*
+(`<<<<<<<` / `=======` / `>>>>>>>`), but cut on the **line grid** — wherever the
+3-way text diff (Myers/histogram, structure-blind) couldn't auto-resolve
+overlapping line ranges. Those marker boundaries almost never coincide with the
+**structural seams** this scanner finds. A marker routinely starts mid-definition,
+or splits a `{ }` pair so the open sits in *ours* and the close in *theirs*. They
+are signals cut to the wrong grid.
+
+Two costs, both things the scanner already sees:
+- **Comprehension** — you resolve a fragment that isn't a structural unit; you're
+  reasoning about half a span.
+- **Correctness** — resolving marker-by-marker (ours here, theirs there) can land
+  a file that is structurally unbalanced: an unmatched brace, a crossing, an
+  unclosed `#if`. That is *precisely* a repair-map seam. Line-grain conflict
+  granularity manufactures the exact malformation the scanner reports.
+
+**The reframe — subforest, not delta tree.** A diff hands you a *delta tree*:
+changes on the line grid, half-spans, shrapnel. Work instead with a **subforest**
+— the affected **whole subtrees** (spans, top-level definitions, `#if/#endif`
+regions) lifted out as complete units from the file's top-level **forest** (no
+envelope → a forest of definitions, never one root, §6/§13a). You diff and merge
+whole subtrees, not line deltas.
+
+**Two operations the tape enables.**
+1. **Re-seam the conflict to structure.** Widen each conflict region out to its
+   enclosing structural seam — whole `{…}` span / whole definition / whole
+   `#if…#endif` — using the jump pointers (O(1) bounds). Now you resolve whole
+   units of the subforest, not line shrapnel.
+2. **Validate the resolution (the scanner as a merge gate).** Scan the merged
+   result; any structural seam present in the resolution but in *neither* parent
+   was **introduced by the merge** — provenance: "this resolution broke balance."
+   The repair map becomes a gate: a resolution that adds no new seam is
+   structurally safe; one that does is rejected with both boundaries pointed at.
+
+**Spine ties.** Endpoints (breadth — two worktrees) tell you *what* clashed; the
+structural seams tell you *where it is safe to cut*. It is Chesterton's Fence on
+the merge: don't trust the line-diff's seams (not load-bearing), preserve and
+align to the real structural ones, and validate rather than assume. The whole
+identity in one line: **git markers are a flat tape cut on the line grid; ours is
+the same idea cut on the structural grid — a structure-aware merge re-seams the
+conflict tape along the structural one.**
