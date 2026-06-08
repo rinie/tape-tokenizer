@@ -167,6 +167,15 @@ The rule (this is the waterline): **0-based below the waterline (offsets, depth,
 - **Branching workflow:** the agent is the *only* brancher — every change goes on
   a topic branch with a PR; the repo owner resolves to `main` at each resting
   point. The agent does not merge or delete branches without being asked.
+- **Sync discipline (because the owner resolves to `main` and deletes the topic
+  branch on merge):**
+  - **Before every local git action, fetch + check whether the remote branch is
+    gone.** A deleted upstream means the last PR was merged — re-root on `main`
+    rather than acting on a dead branch.
+  - **Fetch before every push.**
+  - **If `main` moved (you missed changes), merge `main` in** before continuing or
+    pushing — don't build on a stale base. Merge (not rebase), keeping the
+    owner's merge commits intact.
 
 ## 12. Open questions to resolve with the repo owner
 
