@@ -54,6 +54,7 @@ bracket-scanner.js   milestone-1 reference: bracket-only scanner
 harvest.js           derive a lexical table from a *.tmLanguage.json grammar
 defuse.js            breadth-first def/use projection (on the value-token tape)
 valuetape.js         §13b spike: lossless, fully-pooled value tape (dedup by kind)
+mergegate.js         §13c spike: scanner as a structure-aware merge gate
 tokenizer.js         the original flat value-token tape (idents + intern pool)
 token-tags.js        tag-byte constants for tokenizer.js
 demos/               runnable demos for each piece (node demos/demo-*.js)
