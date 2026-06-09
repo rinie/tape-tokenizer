@@ -49,6 +49,8 @@ OPTIONS
       --lib            Shorthand for --policy lib.
       --defuse         Also run the breadth-first def/use projection (JS only):
                        top-level outline + use-before-def findings.
+  -t, --tape           Print the structural tape as indented ASCII — one
+                       printable char per token, indented by nesting depth.
   -q, --quiet          Print only files that have findings, plus the summary.
       --no-recurse     Do not descend into directories.
   -h, --help           Show this help and exit.
@@ -118,9 +120,10 @@ function collectFiles(paths, recurse) {
   return out;
 }
 
-function scanOne(src, lang, policy, withDefuse) {
+function scanOne(src, lang, policy, withDefuse, withTape) {
   const sc = new LexicalScanner();
   const r = sc.scan(src, TABLES[lang]);
+  const tape = withTape ? r.toPrintableIndented() : null;
   const findings = r.repairMap().map((f) => ({ ...f, line: lineOf(src, f.offset ?? f.startOffset ?? 0) }));
   const errors = findings.filter((f) => f.severity === 'error');
   let seams = findings.filter((f) => f.severity === 'warning');
@@ -141,7 +144,7 @@ function scanOne(src, lang, policy, withDefuse) {
 
   // Under 'own', structural seams are errors too.
   if (policy === 'own') { errors.push(...seams); seams = []; }
-  return { tokens: r.length, bytes: src.length, errors, seams, outline };
+  return { tokens: r.length, bytes: src.length, errors, seams, outline, tape };
 }
 
 function reportFile(path, lang, res, quiet) {
@@ -164,6 +167,10 @@ function reportFile(path, lang, res, quiet) {
       process.stdout.write(`         ${d.kind} ${d.name} → ${uses}\n`);
     }
   }
+  if (res.tape) {
+    process.stdout.write(`       tape (${res.tokens} tokens, indented by depth):\n`);
+    for (const line of res.tape.split('\n')) process.stdout.write(`         ${line}\n`);
+  }
 }
 
 function main() {
@@ -177,6 +184,7 @@ function main() {
         own:     { type: 'boolean' },
         lib:     { type: 'boolean' },
         defuse:  { type: 'boolean' },
+        tape:    { type: 'boolean', short: 't' },
         quiet:   { type: 'boolean', short: 'q' },
         'no-recurse': { type: 'boolean' },
         help:    { type: 'boolean', short: 'h' },
@@ -210,7 +218,7 @@ function main() {
   if (positionals.length === 1 && positionals[0] === '-') {
     if (!values.lang) fail("reading from stdin requires --lang");
     const src = readFileSync(0, 'utf8');
-    const res = scanOne(src, values.lang, policy, values.defuse);
+    const res = scanOne(src, values.lang, policy, values.defuse, values.tape);
     reportFile('<stdin>', values.lang, res, values.quiet);
     process.exit(res.errors.length || res.seams.length ? 1 : 0);
   }
@@ -224,7 +232,7 @@ function main() {
     if (!lang) { totals.skipped++; continue; }
     let src;
     try { src = readFileSync(path, 'utf8'); } catch { process.stderr.write(`scan: cannot read '${showPath(path)}'\n`); totals.skipped++; continue; }
-    const res = scanOne(src, lang, policy, values.defuse);
+    const res = scanOne(src, lang, policy, values.defuse, values.tape);
     reportFile(path, lang, res, values.quiet);
     totals.files++;
     if (res.errors.length) { totals.errors++; anyFinding = true; }
