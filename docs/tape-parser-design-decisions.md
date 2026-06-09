@@ -299,6 +299,15 @@ complexity back. It's a lossy, human-facing projection in the same spirit as
 
 ### 13b. Uniform value/index mapping per token — the side-tables listed next to the lexer
 
+> **Spiked** — `valuetape.js` + `demos/demo-valuetape.js`. A lossless,
+> fully-pooled value tape: every token (whitespace and comments included) is
+> `(kind, poolIndex, offset)` on a dense integer tape; per-kind pools beside it;
+> dedup keyed to uniqueness (ws/ident/keyword/punct interned, literals
+> per-occurrence); interned entries carry occurrence offsets (the 13a
+> cross-reference); `reconstruct()` rebuilds the source byte-for-byte from the
+> pools. Observed: whitespace interns ~6× on a small sample. Templates are one
+> token (no `${}` split) — a noted spike limitation.
+
 **Goal.** Every value-bearing token (identifier, number, string, template, regex,
 char, …) carries, as its dense-tape payload, an **index into a per-kind value
 pool**. The tape stays pure integers (the simdjson spirit already in the repo);
