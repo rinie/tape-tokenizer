@@ -37,6 +37,7 @@ node scan.js src\               :: walk a tree (auto-detect language)
 node scan.js --own src\         :: your code: seams are errors
 node scan.js -l c kernel\*.c    :: force the C table
 node scan.js --defuse app.js    :: balance + def/use projection (JS)
+node scan.js --tape app.js      :: print the structural tape as indented ASCII
 node scan.js --help             :: full usage
 ```
 
