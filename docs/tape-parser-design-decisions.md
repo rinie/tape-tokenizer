@@ -363,6 +363,17 @@ occurrence index that 13a queries.
 
 ### 13c. Structure-aware merge — a subforest, not a delta tree
 
+> **Spiked (the merge gate)** — `mergegate.js` + `demos/demo-mergegate.js`.
+> `splitConflict()` reconstructs ours/theirs from a marked file; `mergeGate()`
+> scans both parents and the resolution and rejects any resolution that is *more*
+> structurally broken than its parents (a seam kind whose count exceeds
+> `max(ours, theirs)` was introduced by the merge). Demonstrated: a botched
+> resolution that drops a `}` is rejected with `1× unmatched-open`; clean picks
+> pass. Also shows the motivation for operation 1 — a conflict can split a `{`
+> from its closing `}`, leaving a reconstructed parent unbalanced (markers on the
+> line grid, not the structural grid). Operation 1 (re-seam conflicts to spans)
+> and offset-level seam identity across versions remain future work.
+
 **The observation.** A git conflict is a *tape with self-describing sentinels*
 (`<<<<<<<` / `=======` / `>>>>>>>`), but cut on the **line grid** — wherever the
 3-way text diff (Myers/histogram, structure-blind) couldn't auto-resolve
