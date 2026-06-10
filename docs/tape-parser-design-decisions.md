@@ -529,10 +529,13 @@ space-step) is detected once and declared in the header; then:
 | `' '` | one inter-token space (the overwhelmingly common case) |
 | `' '(n)` / `\t(n)` | n spaces / tabs on one line |
 | `\n` | newline, **same** indent level — quiet |
-| `\n+1` `\n-2` | newline, level changed by that many units — the signal |
-| `\n(k)` | k consecutive newlines (blank lines) |
+| `+\n` `-\n` `+2\n` | newline, level changed by that many units — **the sign leads** |
+| `\n(k)` | k consecutive newlines (blank lines); with a change: `+\n(2)` |
 | `…"  "` | an off-unit indent shown explicitly — a deviation worth seeing |
 
+The sign comes **first** (owner's call, and the original `+\t`/`-\t` spec):
+scanning the value column, a level change jumps out at the first glyph, while
+quiet `\n` rows share no prefix with it — and it rides the diff `+`/`-` reflex.
 The level *change* is the information; unchanged levels stay quiet — the same
 breadth-first instinct as the folding outline (13d's `--outline`): show the
 skeleton, fold the routine.

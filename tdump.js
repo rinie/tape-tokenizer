@@ -21,10 +21,11 @@
 //
 //   ' '          one inter-token space (the overwhelmingly common case)
 //   ' '(n)       n spaces on one line          \t / \t(n)   tabs likewise
-//   \n           newline, SAME indent level as the previous line
-//   \n+1 \n-2    newline, indent changed by that many UNITS (the level change
-//                is the signal — unchanged levels stay quiet)
-//   \n(k)…       k consecutive newlines (blank lines)
+//   \n           newline, SAME indent level as the previous line — quiet
+//   +\n  -\n     newline, indent one UNIT deeper / shallower. The sign LEADS
+//   +2\n -3\n    (diff convention): scanning the column, a change jumps out at
+//                the first glyph while quiet \n rows don't.
+//   \n(k)        k consecutive newlines (blank lines); with a change: +\n(2)
 //   …' '(n)      an OFF-UNIT indent (not a whole number of units) is shown
 //                explicitly — that deviation is worth seeing.
 
@@ -45,7 +46,7 @@ OPTIONS
       --full       Lossless view: every token, exact lexemes (JSON-escaped).
                    The value column concatenates back to the original source.
       --brief      Default. Whitespace rendered as compact indent deltas
-                   (\\n+1, \\n-1); unchanged levels stay quiet.
+                   (+\\n, -\\n, +2\\n — sign first); unchanged levels stay quiet.
       --signal     Significant tokens only — no whitespace, no comments.
   -h, --help       Show this help and exit.
   -V, --version    Print version and exit.
@@ -99,7 +100,6 @@ function briefWs(lexeme, unit, state) {
     return JSON.stringify(lexeme);                      // mixed — explicit
   }
   const tail = lexeme.slice(lexeme.lastIndexOf('\n') + 1);   // the new line's indent
-  let out = nl === 1 ? '\\n' : `\\n(${nl})`;
   let units;
   let offUnit = false;
   if (unit.kind === 'tab') {
@@ -110,8 +110,13 @@ function briefWs(lexeme, unit, state) {
     units = Math.floor(cols / unit.width);
     offUnit = cols % unit.width !== 0 || /\t/.test(tail);
   }
+  // sign-first (diff convention): the level change leads, quiet \n stays bare
   const delta = units - state.units;
-  if (delta !== 0) out += (delta > 0 ? `+${delta}` : `${delta}`);
+  let sign = '';
+  if (delta === 1) sign = '+';
+  else if (delta === -1) sign = '-';
+  else if (delta !== 0) sign = `${delta > 0 ? '+' : ''}${delta}`;
+  let out = sign + (nl === 1 ? '\\n' : `\\n(${nl})`);
   if (offUnit && tail.length) out += ` ${JSON.stringify(tail)}`;   // deviation: show it
   state.units = units;
   return out;
@@ -124,7 +129,7 @@ function dumpTokens(src, mode = 'brief') {
   const state = { units: 0 };
   const lines = [];
 
-  if (mode === 'brief') lines.push(`indent unit: ${unit.label}; \\n+1/\\n-1 = level change in units; quiet when unchanged`);
+  if (mode === 'brief') lines.push(`indent unit: ${unit.label}; +\\n/-\\n = level change in units (sign leads); quiet \\n when unchanged`);
 
   for (let t = 0; t < u.length; t++) {
     const klass = u.classOf(t);
