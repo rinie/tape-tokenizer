@@ -529,10 +529,17 @@ bracket mnemonics — with the tag NAME as the pooled value. Names are interned,
 so `<book>` and `</book>` share one pool slot (`{ tag#1 book` / `} tag#1 book`)
 — the O(1) name match made visible in the dump. Text is `T`, declarations `!`,
 comments `#`; attributes tokenize as ident/op/string inside the tag.
-Losslessness holds: the `<` / `</` prefix is implied by the tag byte and
-restored on reconstruction. Free bonus: `toPrintable()` of XML is the same
-ghost-source skeleton as code — `<title>text</title>` reads `{>T}>`. This is
-the first bite of the lexical-scanner migration (13e).
+
+**The `>` is a closing separator, not a token of its own** (owner's call). An
+attribute-less tag absorbs it: `<catalog>` is ONE tape token. An
+attribute-less self-closing tag is one `/` token (`<br/>`). Only
+attribute-bearing tags keep a trailing separator token — `>` (elided from the
+signal view; it carries no signal) or `/>` (kept; it says the element closed).
+Losslessness holds because tag tokens reconstruct from their source SPAN
+(offset to next offset — §13b's offset+length raw-slice option), which carries
+the `<`/`</` prefix and any absorbed `>` for free. `toPrintable()` of XML is
+the same ghost-source skeleton as code — `<title>text</title>` reads `{T}`.
+This is the first bite of the lexical-scanner migration (13e).
 
 **The name for this is the RATFOR principle** (owner's framing — Kernighan &
 Plauger, *Software Tools*, 1976). RATFOR's stance: FORTRAN's surface syntax is
@@ -541,7 +548,19 @@ rational surface (`{}` blocks, free form) and treat the underlying syntax as a
 compilation detail. The mnemonic projection is the same move generalised:
 **prefer the rational representation; don't follow the surface syntax too
 deep.** `{` is what an open *is* — whether the underlying "FORTRAN" spells it
-`{`, `<book>`, or `#if`. One inversion: RATFOR was a *writing* tool (author
+`{` or `<book>`.
+
+**Refinement (owner's call): preserve the role, mark the family — never
+overload.** Two *different* nesting families must not collapse onto one symbol:
+C's `#if` is bracket-role but it is not a brace, so it renders as a
+family-marked digraph — `#{` opens, `}#` closes, and `#else`/`#elif` render as
+`}# #{` (a branch marker IS a close+open pair at the same depth, so every
+segment reads as a balanced block) — the `#` bookending each block on the
+OUTSIDE at both ends (`}#` over `#}`, mirroring `#{`). The brace shape carries the role; the `#` carries the family. XML tags
+*may* use plain `{`/`}` because in an XML file there is no second brace family
+to collide with; in C there is. (Tag bytes stay single internally — the digraph
+lives in the projection layer, slightly relaxing §7's "length == token count"
+for this family.) One inversion: RATFOR was a *writing* tool (author
 rationally, compile down, never read the output); ours is a *reading*
 projection (ingest any surface, view it rationally) — and because the tape is
 lossless, the arrow runs both ways. The per-language lexical table (§2) is

@@ -55,10 +55,26 @@ const X_COMM  = 0x23;  // #  comment
 const X_DECL  = 0x21;  // !  declaration / processing-instruction / CDATA
 
 // ── preprocessor-conditional projection chars (the SECOND, line-based family) ──
-// A mnemonic ternary shape: #if ? … #else : … #endif ;
-const P_IF    = 0x3F;  // ?  #if / #ifdef / #ifndef  (open)
-const P_ELSE  = 0x3A;  // :  #elif / #else            (branch marker, no nesting)
-const P_ENDIF = 0x3B;  // ;  #endif                   (close)
+// The cpp conditionals are bracket-ROLE tokens, but they must not overload the
+// true braces (RATFOR principle, refined: preserve the role, mark the family).
+// They render as family-marked digraphs — the '#' bookends the block on the
+// OUTSIDE at both ends:   #{  …  }# #{  …  }#
+// #else / #elif render as '}# #{': a branch marker IS a close+open pair at the
+// same depth, so every segment reads as a balanced block by eye.
+// The tag BYTES below stay single (internal discriminators); the rendering
+// lives in the projection layer (mnemonicOf), which relaxes §7's "length ==
+// token count" for this family — the projection is the lossy human view.
+const P_IF    = 0x3F;  // renders '#{'     #if / #ifdef / #ifndef  (open)
+const P_ELSE  = 0x3A;  // renders '}# #{'  #elif / #else            (close+open, one token)
+const P_ENDIF = 0x3B;  // renders '}#'     #endif                   (close)
+
+// tag byte → printable mnemonic (single char, except the cpp family)
+function mnemonicOf(tag) {
+  if (tag === P_IF)    return '#{';
+  if (tag === P_ELSE)  return '}# #{';
+  if (tag === P_ENDIF) return '}#';
+  return String.fromCharCode(tag);
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -582,14 +598,14 @@ class LexicalScanner {
 
     function toPrintable() {
       let out = '';
-      for (let i = 0; i < len; i++) out += String.fromCharCode(tags[i]);
+      for (let i = 0; i < len; i++) out += mnemonicOf(tags[i]);
       return out;
     }
 
     function toPrintableIndented() {
       const lines = [];
       for (let i = 0; i < len; i++) {
-        lines.push('  '.repeat(depths[i]) + String.fromCharCode(tags[i]));
+        lines.push('  '.repeat(depths[i]) + mnemonicOf(tags[i]));
       }
       return lines.join('\n');
     }
@@ -600,7 +616,7 @@ class LexicalScanner {
       for (let i = 0; i < len; i++) {
         if (depths[i] !== 0) continue;
         const nm = nameOf(i);
-        rows.push({ tapeIndex: i, char: String.fromCharCode(tags[i]), name: nm, offset: offsets[i] });
+        rows.push({ tapeIndex: i, char: mnemonicOf(tags[i]), name: nm, offset: offsets[i] });
       }
       return rows;
     }
@@ -618,14 +634,14 @@ class LexicalScanner {
         if (d >= maxDepth) { i++; continue; }   // beyond the fold (under an unmatched opener)
         const tag = tags[i];
         const nm = nameOf(i);
-        const label = String.fromCharCode(tag) + (nm ? nm : '');
+        const label = mnemonicOf(tag) + (nm ? nm : '');
         const indent = '  '.repeat(d);
         const isOpener = (tag < 128 && IS_OPEN[tag]) || tag === X_OPEN || tag === P_IF;
         const j = jumps[i];
         if (isOpener && d === maxDepth - 1) {
           if (j !== -1 && j !== i) {
             const inner = j - i - 1;
-            const close = String.fromCharCode(tags[j]);
+            const close = mnemonicOf(tags[j]);
             out.push(inner === 0 ? `${indent}${label}${close}` : `${indent}${label} … ${inner} … ${close}`);
             i = j + 1;
             continue;
@@ -641,7 +657,7 @@ class LexicalScanner {
     function dumpColumns({ showContext = false } = {}) {
       const rows = [];
       for (let i = 0; i < len; i++) {
-        const ch   = String.fromCharCode(tags[i]);
+        const ch   = mnemonicOf(tags[i]);
         const nm   = nameOf(i);
         const jump = jumps[i] === -1 ? '   ?' : `→[${String(jumps[i]).padStart(3)}]`;
         let row = `[${String(i).padStart(4)}]  off=${String(offsets[i]).padStart(6)}  d=${String(depths[i]).padStart(3)}  ${ch}  ${jump}`;

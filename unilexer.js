@@ -80,6 +80,7 @@ TAG_CLASS_XML[TAG_COMMENT] = KLASS.COMMENT;     // #
 TAG_CLASS_XML[0x21] = KLASS.DECL;               // !  <?…?> <!…> <![CDATA[…]]>
 TAG_CLASS_XML[0x7B] = KLASS.TAG;                // {  open tag
 TAG_CLASS_XML[0x7D] = KLASS.TAG;                // }  close tag
+TAG_CLASS_XML[0x2F] = KLASS.TAG;                // /  complete self-closing tag
 TAG_CLASS_XML[0x54] = KLASS.TEXT;               // T  text content
 TAG_CLASS_XML[T.STRING] = KLASS.STRING;         // S  attribute values
 TAG_CLASS_XML[T.IDENT] = KLASS.IDENT;           // I  attribute names
@@ -333,6 +334,12 @@ class UniLexer {
             emit(0x3C, KLASS.PUNCT, '<', start, depth);
             i++; continue;
           }
+          // attribute-less complete self-closing tag <br/> — ONE token, self-linked
+          if (!isClose && src.charCodeAt(j) === 0x2F && src.charCodeAt(j + 1) === 0x3E) {
+            const idx = emit(0x2F, KLASS.TAG, name, start, depth);   // '/'
+            linkArr[idx] = idx;
+            i = j + 2; continue;
+          }
           if (isClose) {
             depth = depth > 0 ? depth - 1 : 0;
             const idx = emit(0x7D, KLASS.TAG, name, start, depth);   // '}'
@@ -350,6 +357,10 @@ class UniLexer {
             stack.push({ idx, poolIdx: poolArr[idx] });
             depth++;
           }
+          // '>' directly after the name (no attributes): the closing separator
+          // belongs to the tag — <catalog> is ONE token. The token's span
+          // includes the '>' (rawOf reads spans), so losslessness holds.
+          if (src.charCodeAt(j) === 0x3E) { i = j + 1; continue; }
           i = j; inTag = true; continue;
         }
         // text run up to the next '<'; whitespace-only runs are WS
@@ -461,11 +472,13 @@ class UniLexer {
     const depthOf  = (t) => depthArr[t];
 
     // The exact source text of one token. For XML tag tokens the pooled value
-    // is the NAME (interned, shared by open and close); the '<' / '</' prefix
-    // is implied by the tag byte and restored here.
+    // is the NAME (interned, shared by open and close); the surrounding syntax
+    // ('<', '</', an absorbed '>' or '/>') is recovered from the token's source
+    // SPAN — tokens are contiguous, so span = this offset to the next. This is
+    // §13b's offset+length raw-slice option, applied to the tag class.
     const rawOf = (t) => {
       if (xml && classTable[tagArr[t]] === KLASS.TAG) {
-        return (tagArr[t] === 0x7B ? '<' : '</') + lexemeOf(t);
+        return src.slice(offArr[t], t + 1 < n ? offArr[t + 1] : src.length);
       }
       return lexemeOf(t);
     };
