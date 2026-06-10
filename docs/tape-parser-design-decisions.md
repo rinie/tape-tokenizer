@@ -477,8 +477,58 @@ ghost │ f I(I, I) {                    c I = [N, D, N];
 (Note the `N`/`D` int-vs-float distinction surviving into the ghost.)
 
 **Migration state (honest):** sfdiff.js rides unilexer (verified byte-identical
-verdicts); valuetape.js stays as the 13b historical spike. tokenizer.js
-(defuse) and lexical-scanner.js (scan/validate — seams, cpp/XML families,
-multi-language tables, the harvested-table mechanism) are the remaining
-targets; the structural-seam machinery moves last because it is the most
-load-bearing. Until then unilexer is JS-only by construction.
+verdicts); defuse.js rides unilexer (verified semantically identical — tape
+indices shift because ws/comment tokens now occupy slots); valuetape.js stays
+as the 13b historical spike and tokenizer.js is now demo-only.
+lexical-scanner.js (scan/validate — seams, cpp/XML families, multi-language
+tables, the harvested-table mechanism) is the remaining target; the
+structural-seam machinery moves last because it is the most load-bearing.
+Until then unilexer is JS-only by construction.
+
+### 13f. Whitespace association & the dump views — projections, not tape columns
+
+> **Spiked** — `tdump.js`; defuse migration in the same PR.
+
+**The question:** should whitespace be *associated* with a leading/following
+"real" token, and would that complicate the tape?
+
+**The decision: no tape change.** Whitespace tokens already sit physically
+adjacent to their neighbours on the uniform tape (13b/13e), so attachment is
+**derivable by adjacency in O(1)** — the ws token before a real token *is* its
+leading trivia; the one after *is* its trailing. Conventions that split runs
+(Roslyn-style: trailing trivia ends at the first newline, the rest leads the
+next token) are equally derivable. Storing an owner column would bake ONE
+attachment policy into the substrate; deriving keeps the tape Gutenberg-neutral
+and lets each consumer attach differently (sfdiff ignores trivia entirely; a
+span-mover takes the leading ws with the span; a comment-docs tool binds
+comments forward). **Association is a view, not a fact of the tape.**
+
+**The dump views (`tdump.js`)** — three projections over the one unchanged tape:
+
+- `--full` — complete and revertible: exact JSON-escaped lexemes; the value
+  column concatenates back to the original source (verified in the footer).
+- `--brief` (default) — the signal with quiet whitespace (notation below).
+- `--signal` — significant tokens only; trivia omitted *from the view* (it is
+  still on the tape — a view, not a loss). Tape indices stay stable across
+  views.
+
+Each row is `[tape index] tag-char class pool#index value` — the
+index/value pair listed next to the lexer, with interned classes visibly
+reusing pool slots (`ws#0` is *the* single inter-token space).
+
+**Brief whitespace notation** — report the common cases briefly, surface only
+the deviations. The file's **indent unit** (tabs, or the most common
+space-step) is detected once and declared in the header; then:
+
+| rendering | meaning |
+|---|---|
+| `' '` | one inter-token space (the overwhelmingly common case) |
+| `' '(n)` / `\t(n)` | n spaces / tabs on one line |
+| `\n` | newline, **same** indent level — quiet |
+| `\n+1` `\n-2` | newline, level changed by that many units — the signal |
+| `\n(k)` | k consecutive newlines (blank lines) |
+| `…"  "` | an off-unit indent shown explicitly — a deviation worth seeing |
+
+The level *change* is the information; unchanged levels stay quiet — the same
+breadth-first instinct as the folding outline (13d's `--outline`): show the
+skeleton, fold the routine.

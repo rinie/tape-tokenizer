@@ -1,0 +1,180 @@
+// tdump.js — token dump: every token with its (pool index / value) pair, on the
+// unified tape.
+//
+//   node tdump.js [--full | --brief | --signal] <file.js>
+//
+// Three views over ONE unchanged tape — this is the design answer to "would
+// associating whitespace with a real token complicate the tape?": no. The tape
+// stays uniform (whitespace IS a token, §13b lossless); association and
+// noise-reduction are PROJECTIONS, derivable by adjacency, never stored:
+//
+//   --full     complete and revertible: exact lexemes (JSON-escaped), every
+//              token. Concatenating the value column reproduces the source
+//              byte-for-byte (verified in the footer).
+//   --brief    the signal with quiet whitespace (default): ws is rendered in a
+//              compact indent-aware notation — see below.
+//   --signal   no trivia at all: significant tokens only.
+//
+// Brief whitespace notation. The dump first detects the file's INDENT UNIT
+// (tabs, or the most common space-step — 2, 4, …) and reports it once in the
+// header. Each ws token then renders as:
+//
+//   ' '          one inter-token space (the overwhelmingly common case)
+//   ' '(n)       n spaces on one line          \t / \t(n)   tabs likewise
+//   \n           newline, SAME indent level as the previous line
+//   \n+1 \n-2    newline, indent changed by that many UNITS (the level change
+//                is the signal — unchanged levels stay quiet)
+//   \n(k)…       k consecutive newlines (blank lines)
+//   …' '(n)      an OFF-UNIT indent (not a whole number of units) is shown
+//                explicitly — that deviation is worth seeing.
+
+import { readFileSync } from 'node:fs';
+import { parseArgs } from 'node:util';
+import { pathToFileURL } from 'node:url';
+import { UniLexer, KLASS, KLASS_NAME } from './unilexer.js';
+
+const VERSION = '0.1.0';
+
+const HELP = `tape-tokenizer tdump — token dump with pool index/value pairs (v${VERSION})
+
+USAGE
+  node tdump.js [options] <file.js>
+  node tdump.js [options] -          (read from stdin)
+
+OPTIONS
+      --full       Lossless view: every token, exact lexemes (JSON-escaped).
+                   The value column concatenates back to the original source.
+      --brief      Default. Whitespace rendered as compact indent deltas
+                   (\\n+1, \\n-1); unchanged levels stay quiet.
+      --signal     Significant tokens only — no whitespace, no comments.
+  -h, --help       Show this help and exit.
+  -V, --version    Print version and exit.
+
+COLUMNS
+  [tape index] tag-char class pool#index value
+
+  The tag char is the token-tags mnemonic (keywords whisper lowercase, literals
+  shout uppercase, brackets are literal). pool#index is the token's slot in its
+  per-class value pool — interned classes (ws, ident, keyword, op, punct,
+  bracket) reuse slots; literal classes get one slot per occurrence.
+`;
+
+function fail(msg) {
+  process.stderr.write(`tdump: ${msg}\nTry 'node tdump.js --help' for usage.\n`);
+  process.exit(2);
+}
+
+// ── indent unit detection ─────────────────────────────────────────────────────
+// Look at the leading whitespace of non-blank lines. Tabs win if present;
+// otherwise the most common positive step between consecutive indent widths.
+function detectIndentUnit(src) {
+  const lines = src.split('\n');
+  let sawTab = false;
+  const widths = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const m = line.match(/^[ \t]*/)[0];
+    if (m.includes('\t')) sawTab = true;
+    widths.push(m.replace(/\t/g, '    ').length);   // tab≈4 just for stepping
+  }
+  if (sawTab) return { kind: 'tab', width: 1, label: '\\t (tabs)' };
+  const steps = new Map();
+  for (let i = 1; i < widths.length; i++) {
+    const d = Math.abs(widths[i] - widths[i - 1]);
+    if (d > 0) steps.set(d, (steps.get(d) || 0) + 1);
+  }
+  let best = 0; let bestCount = 0;
+  for (const [d, c] of steps) if (c > bestCount || (c === bestCount && d < best)) { best = d; bestCount = c; }
+  const width = best || 2;
+  return { kind: 'space', width, label: `${width} spaces` };
+}
+
+// Render one ws lexeme in the brief notation. `state.units` carries the current
+// indent level (in units) across calls.
+function briefWs(lexeme, unit, state) {
+  const nl = (lexeme.match(/\n/g) || []).length;
+  if (nl === 0) {
+    if (/^ +$/.test(lexeme)) return lexeme.length === 1 ? "' '" : `' '(${lexeme.length})`;
+    if (/^\t+$/.test(lexeme)) return lexeme.length === 1 ? '\\t' : `\\t(${lexeme.length})`;
+    return JSON.stringify(lexeme);                      // mixed — explicit
+  }
+  const tail = lexeme.slice(lexeme.lastIndexOf('\n') + 1);   // the new line's indent
+  let out = nl === 1 ? '\\n' : `\\n(${nl})`;
+  let units;
+  let offUnit = false;
+  if (unit.kind === 'tab') {
+    units = (tail.match(/\t/g) || []).length;
+    offUnit = /[^\t]/.test(tail);
+  } else {
+    const cols = tail.replace(/\t/g, ' '.repeat(4)).length;
+    units = Math.floor(cols / unit.width);
+    offUnit = cols % unit.width !== 0 || /\t/.test(tail);
+  }
+  const delta = units - state.units;
+  if (delta !== 0) out += (delta > 0 ? `+${delta}` : `${delta}`);
+  if (offUnit && tail.length) out += ` ${JSON.stringify(tail)}`;   // deviation: show it
+  state.units = units;
+  return out;
+}
+
+// ── the dump itself — a projection over the unchanged tape ───────────────────
+function dumpTokens(src, mode = 'brief') {
+  const u = new UniLexer().tokenize(src);
+  const unit = detectIndentUnit(src);
+  const state = { units: 0 };
+  const lines = [];
+
+  if (mode === 'brief') lines.push(`indent unit: ${unit.label}; \\n+1/\\n-1 = level change in units; quiet when unchanged`);
+
+  for (let t = 0; t < u.length; t++) {
+    const klass = u.classOf(t);
+    const trivia = klass === KLASS.WS || klass === KLASS.COMMENT;
+    if (mode === 'signal' && trivia) continue;
+
+    const lexeme = u.lexemeOf(t);
+    let value;
+    if (klass === KLASS.WS && mode === 'brief') value = briefWs(lexeme, unit, state);
+    else if (klass === KLASS.COMMENT && mode === 'brief') value = JSON.stringify(lexeme.length > 32 ? lexeme.slice(0, 32) + '…' : lexeme);
+    else value = JSON.stringify(lexeme);
+
+    lines.push(`[${String(t).padStart(4)}] ${u.charOf(t)} ${KLASS_NAME[klass].padEnd(8)} ${KLASS_NAME[klass]}#${String(u.poolArr[t]).padEnd(4)} ${value}`);
+  }
+
+  const footer = [`${u.length} tokens`];
+  if (mode === 'full') footer.push(`lossless: ${u.reconstruct() === src ? 'PASS (value column reverts to the original)' : 'FAIL'}`);
+  if (mode === 'signal') footer.push('trivia omitted (still on the tape — this is a view, not a loss)');
+  lines.push(`── ${footer.join('; ')} ──`);
+  return lines.join('\n');
+}
+
+function main() {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      allowPositionals: true,
+      options: {
+        full:    { type: 'boolean' },
+        brief:   { type: 'boolean' },
+        signal:  { type: 'boolean' },
+        help:    { type: 'boolean', short: 'h' },
+        version: { type: 'boolean', short: 'V' },
+      },
+    });
+  } catch (e) { fail(e.message); }
+  const { values, positionals } = parsed;
+  if (values.help)    { process.stdout.write(HELP); process.exit(0); }
+  if (values.version) { process.stdout.write(`${VERSION}\n`); process.exit(0); }
+  if (positionals.length !== 1) fail('expected exactly one file (or - for stdin)');
+
+  const mode = values.full ? 'full' : values.signal ? 'signal' : 'brief';
+  let src;
+  try {
+    src = positionals[0] === '-' ? readFileSync(0, 'utf8') : readFileSync(positionals[0], 'utf8');
+  } catch { fail(`cannot read '${positionals[0]}'`); }
+
+  process.stdout.write(dumpTokens(src, mode) + '\n');
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+
+export { dumpTokens, detectIndentUnit, briefWs };
