@@ -51,6 +51,9 @@ OPTIONS
                        top-level outline + use-before-def findings.
   -t, --tape           Print the structural tape as indented ASCII — one
                        printable char per token, indented by nesting depth.
+  -o, --outline <n>    Print the tape FOLDED at depth n (breadth-first view):
+                       tokens deeper than n collapse into their opener as one
+                       line, e.g. "{ … 47 … }". Raise n to peel one more layer.
   -q, --quiet          Print only files that have findings, plus the summary.
       --no-recurse     Do not descend into directories.
   -h, --help           Show this help and exit.
@@ -120,10 +123,11 @@ function collectFiles(paths, recurse) {
   return out;
 }
 
-function scanOne(src, lang, policy, withDefuse, withTape) {
+function scanOne(src, lang, policy, withDefuse, withTape, outlineDepth) {
   const sc = new LexicalScanner();
   const r = sc.scan(src, TABLES[lang]);
   const tape = withTape ? r.toPrintableIndented() : null;
+  const folded = outlineDepth ? r.toOutline(outlineDepth) : null;
   const findings = r.repairMap().map((f) => ({ ...f, line: lineOf(src, f.offset ?? f.startOffset ?? 0) }));
   const errors = findings.filter((f) => f.severity === 'error');
   let seams = findings.filter((f) => f.severity === 'warning');
@@ -144,7 +148,7 @@ function scanOne(src, lang, policy, withDefuse, withTape) {
 
   // Under 'own', structural seams are errors too.
   if (policy === 'own') { errors.push(...seams); seams = []; }
-  return { tokens: r.length, bytes: src.length, errors, seams, outline, tape };
+  return { tokens: r.length, bytes: src.length, errors, seams, outline, tape, folded, foldDepth: outlineDepth };
 }
 
 function reportFile(path, lang, res, quiet) {
@@ -171,6 +175,10 @@ function reportFile(path, lang, res, quiet) {
     process.stdout.write(`       tape (${res.tokens} tokens, indented by depth):\n`);
     for (const line of res.tape.split('\n')) process.stdout.write(`         ${line}\n`);
   }
+  if (res.folded) {
+    process.stdout.write(`       outline (folded at depth ${res.foldDepth}; raise to peel a layer):\n`);
+    for (const line of res.folded.split('\n')) process.stdout.write(`         ${line}\n`);
+  }
 }
 
 function main() {
@@ -185,6 +193,7 @@ function main() {
         lib:     { type: 'boolean' },
         defuse:  { type: 'boolean' },
         tape:    { type: 'boolean', short: 't' },
+        outline: { type: 'string',  short: 'o' },
         quiet:   { type: 'boolean', short: 'q' },
         'no-recurse': { type: 'boolean' },
         help:    { type: 'boolean', short: 'h' },
@@ -205,6 +214,13 @@ function main() {
   if (values.lib) policy = 'lib';
   if (policy !== 'lib' && policy !== 'own') fail(`invalid --policy '${policy}' (expected lib | own)`);
 
+  // resolve outline depth
+  let outlineDepth = 0;
+  if (values.outline !== undefined) {
+    outlineDepth = parseInt(values.outline, 10);
+    if (!Number.isInteger(outlineDepth) || outlineDepth < 1) fail(`invalid --outline '${values.outline}' (expected a depth >= 1)`);
+  }
+
   // resolve forced language
   if (values.lang && !TABLES[values.lang]) fail(`unknown --lang '${values.lang}' (expected ${Object.keys(TABLES).join(' | ')})`);
 
@@ -218,7 +234,7 @@ function main() {
   if (positionals.length === 1 && positionals[0] === '-') {
     if (!values.lang) fail("reading from stdin requires --lang");
     const src = readFileSync(0, 'utf8');
-    const res = scanOne(src, values.lang, policy, values.defuse, values.tape);
+    const res = scanOne(src, values.lang, policy, values.defuse, values.tape, outlineDepth);
     reportFile('<stdin>', values.lang, res, values.quiet);
     process.exit(res.errors.length || res.seams.length ? 1 : 0);
   }
@@ -232,7 +248,7 @@ function main() {
     if (!lang) { totals.skipped++; continue; }
     let src;
     try { src = readFileSync(path, 'utf8'); } catch { process.stderr.write(`scan: cannot read '${showPath(path)}'\n`); totals.skipped++; continue; }
-    const res = scanOne(src, lang, policy, values.defuse, values.tape);
+    const res = scanOne(src, lang, policy, values.defuse, values.tape, outlineDepth);
     reportFile(path, lang, res, values.quiet);
     totals.files++;
     if (res.errors.length) { totals.errors++; anyFinding = true; }
