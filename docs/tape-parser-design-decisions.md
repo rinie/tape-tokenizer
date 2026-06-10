@@ -445,3 +445,40 @@ nothing. Same honest segmentation scope as 13a (top-level `function`/`class`;
 const/arrow forms pool into the loose unit). This is the worktree-vs-diff
 conversation made into a tool: endpoints compared breadth-first on the
 structural grid, the DAG never materialised.
+
+### 13e. One lexer, one tape — the consolidation
+
+> **Spiked** — `unilexer.js` + `demos/demo-unilexer.js`; `sfdiff.js` migrated
+> onto it with byte-identical output.
+
+The repo had grown **three lexers** (tokenizer.js, lexical-scanner.js,
+valuetape.js), each with its own copy of string/comment/regex classification —
+a maintenance seam of our own making. `unilexer.js` is the consolidation
+target: **one scan pass, one uniform tape carrying both layers** — every token
+indexes a per-class value pool (13b: dedup keyed to uniqueness, lossless
+reconstruction, occurrence offsets), and brackets additionally carry partner
+links and depth (tolerant, non-faulting).
+
+**The encoding decision — the mnemonic byte IS the tag.** token-tags.js's
+printable-ASCII scheme is promoted from debug labelling to the tape encoding
+itself. One byte per token: brackets/punct keep their literal ASCII, keywords
+get their lowercase mnemonics (`f`unction, `r`eturn, `i`f — they whisper),
+literals their UPPERCASE initials (`I N D S X R` — they shout), operators `=`,
+comments `#`, whitespace `' '`. The coarse class for programmatic queries is
+*derived* from the byte via a 256-entry lookup — no second per-token column.
+Mnemonic for humans, class for machines, one byte for both. `toPrintable()`
+of the full tape is then *ghost source*:
+
+```
+src   │ function add(a, b) {          const nums = [1, 2.5, 0xFF];
+ghost │ f I(I, I) {                    c I = [N, D, N];
+```
+
+(Note the `N`/`D` int-vs-float distinction surviving into the ghost.)
+
+**Migration state (honest):** sfdiff.js rides unilexer (verified byte-identical
+verdicts); valuetape.js stays as the 13b historical spike. tokenizer.js
+(defuse) and lexical-scanner.js (scan/validate — seams, cpp/XML families,
+multi-language tables, the harvested-table mechanism) are the remaining
+targets; the structural-seam machinery moves last because it is the most
+load-bearing. Until then unilexer is JS-only by construction.
