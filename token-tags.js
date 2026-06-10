@@ -18,11 +18,17 @@
 //   0x52 'R'    = REGEX
 //   0x53 'S'    = STRING
 //   0x58 'X'    = TEMPLATE (eXpression string)
-//   0x5E '^'    = catch  (caret catches upward — throw/catch arc)
-//   0x7E '~'    = false  (bitwise NOT of true)
+//   0x48 'H'    = catch  (catcH — pairs with 'h' = throw: the throw/catch arc
+//                 as a case pair)
+//   0x75 'u'    = false  (untrue)
 //
-// Free A-Za-z after all assignments: H Q  (uppercase)
-//                                    b g m p q u z  (lowercase)
+// '^' and '~' were originally catch/false; reassigned so ALL operator chars
+// are free for exact-ASCII operator tags on the unified tape (unilexer): an
+// operator token's tag byte is the operator's own first char (+ - * & | ^ ~ …),
+// same rule as punctuation.
+//
+// Free A-Za-z after all assignments: Q  (uppercase)
+//                                    b g m p q z  (lowercase)
 // → reserved for TypeScript keywords
 
 export const T = {
@@ -63,11 +69,12 @@ export const T = {
   //  't' = this      wins decisively   (most-used T keyword)
   //  'T' = true      second T keyword, both common enough for single chars
   //  'M' = import    iMport — 'i'=if, 'I'=IDENT, so M (middle letter) used
-  //  '^' = catch     throw/catch arc; caret visually catches upward
-  //  '0' = null      null is falsy/zero; '0' is the perfect mnemonic
-  //  '~' = false     bitwise NOT of true is false; ~ is the NOT operator
+  //  'H' = catch     catcH — pairs with 'h' = throw (the throw/catch arc as a
+  //                  case pair); was '^', freed for exact-ASCII operators
+  //  '0' = null      null is falsy/zero; '0' is the mnemonic
+  //  'u' = false     untrue; was '~', freed for exact-ASCII operators
   //  'y' = typeof    tYpeof — 'y' free since yield demoted to tier-2
-  //  'h' = throw     tHrow — 'h' free (no H keywords)
+  //  'h' = throw     tHrow
   //  'x' = extends   eXtends — 'X'=TEMPLATE but lowercase x is free
 
   KW_IF:         0x69,  // i  ★★★  most frequent keyword overall
@@ -93,9 +100,9 @@ export const T = {
   KW_OF:         0x6F,  // o  ★★
   KW_WHILE:      0x77,  // w  ★★
   KW_DELETE:     0x64,  // d  ★    ('D' = DOUBLE literal)
-  KW_CATCH:      0x5E,  // ^  ★★   throw/catch arc mnemonic
+  KW_CATCH:      0x48,  // H  ★★   catcH — pairs with 'h' throw
   KW_NULL:       0x30,  // 0  ★★   null is falsy/zero
-  KW_FALSE:      0x7E,  // ~  ★★   bitwise NOT of true
+  KW_FALSE:      0x75,  // u  ★★   untrue
 
   // ── keywords tier 2 — unused A-Za-z mnemonics ────────────────────────────
   KW_BREAK:      0x42,  // B  Break

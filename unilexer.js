@@ -18,7 +18,8 @@
 //   keywords         lowercase mnemonics whisper f=function r=return i=if …
 //   literals         UPPERCASE initials shout    I=IDENT N=NUMBER D=DOUBLE
 //                                                S=STRING X=TEMPLATE R=REGEX
-//   operators        '=' (generic op run)
+//   operators        their own first char       + - * / & | ^ ~ < > ! % ? @
+//                    ('&&' is tag '&'; the pool has the full lexeme)
 //   comments         '#'                         (same char XML mode uses)
 //   whitespace       ' '  — so toPrintable() reads like ghost source
 //
@@ -55,8 +56,12 @@ TAG_CLASS[T.REGEX] = KLASS.REGEX;         // R
 TAG_CLASS[T.NUMBER] = KLASS.NUMBER;       // N
 TAG_CLASS[T.DOUBLE] = KLASS.NUMBER;       // D
 TAG_CLASS[T.IDENT] = KLASS.IDENT;         // I
-TAG_CLASS[T.OP] = KLASS.OP;               // =
 for (const byte of KEYWORDS.values()) TAG_CLASS[byte] = KLASS.KEYWORD;
+// Operators are directly encoded — the tag byte is the operator's own first
+// char, same exact-ASCII rule as punctuation. The pool carries the full
+// lexeme, so `&&` is tag '&' with value "&&". (token-tags freed '^' and '~'
+// for this: catch → 'H', false → 'u'.)
+for (const ch of '!%&*+-/<=>?@^|~') TAG_CLASS[ch.charCodeAt(0)] = KLASS.OP;
 for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]) {
   TAG_CLASS[b] = KLASS.BRACKET;
 }
@@ -188,11 +193,13 @@ class UniLexer {
       } else if (c === 0x3B || c === 0x2C || c === 0x3A) {                   // ; , :
         end = i + 1; tag = c;
       } else if (c === 0x2E) {                                               // . (incl. ...)
-        if (src.charCodeAt(i + 1) === 0x2E && src.charCodeAt(i + 2) === 0x2E) { end = i + 3; tag = T.OP; }
+        if (src.charCodeAt(i + 1) === 0x2E && src.charCodeAt(i + 2) === 0x2E) { end = i + 3; tag = 0x2E; }
         else { end = i + 1; tag = T.DOT; }
       } else if (OP_CHARS.has(src[i])) {
+        // directly encoded: tag byte = the operator's own first char ('&&'
+        // is tag '&'); the pooled lexeme carries the full operator
         let j = i + 1; while (j < len && OP_CHARS.has(src[j])) j++;
-        end = j; tag = T.OP;
+        end = j; tag = c;
       } else {
         end = i + 1; tag = c < 128 ? c : T.OP;   // bare ASCII punct keeps its own byte
       }

@@ -131,13 +131,13 @@ Frequency tiers (from corpus analysis of npm/GitHub JS codebases):
 | 0x46 | `F`  | KW_FOR      | both for & function get a slot |
 | 0x30 | `0`  | KW_NULL     | null is falsy/zero — perfect mnemonic |
 | 0x54 | `T`  | KW_TRUE     | both this & true get a slot |
-| 0x5E | `^`  | KW_CATCH    | caret "catches" upward — throw/catch arc |
+| 0x48 | `H`  | KW_CATCH    | catcH — pairs with `h` = throw (was `^`, freed for operators) |
 | 0x61 | `a`  | KW_AWAIT    | lowercase mirrors async/await pairing |
 | 0x63 | `c`  | KW_CONST    | most-used C keyword |
 | 0x64 | `d`  | KW_DELETE   | D=DOUBLE literal, so lowercase |
 | 0x65 | `e`  | KW_ELSE     | |
 | 0x66 | `f`  | KW_FUNCTION | edges out for in raw count |
-| 0x68 | `h`  | KW_THROW    | tHrow — h free (no H keywords) |
+| 0x68 | `h`  | KW_THROW    | tHrow — pairs with `H` = catch |
 | 0x69 | `i`  | KW_IF       | most frequent keyword overall |
 | 0x6C | `l`  | KW_LET      | |
 | 0x6E | `n`  | KW_NEW      | N=NUMBER literal |
@@ -150,7 +150,7 @@ Frequency tiers (from corpus analysis of npm/GitHub JS codebases):
 | 0x77 | `w`  | KW_WHILE    | |
 | 0x78 | `x`  | KW_EXTENDS  | eXtends — X=TEMPLATE |
 | 0x79 | `y`  | KW_TYPEOF   | tYpeof — yield demoted to tier-2 |
-| 0x7E | `~`  | KW_FALSE    | bitwise NOT of true = false |
+| 0x75 | `u`  | KW_FALSE    | untrue (was `~`, freed for operators) |
 
 **Tier-2 assignments** (0x80+ sequential, rare keywords):
 
