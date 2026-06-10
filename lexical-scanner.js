@@ -58,18 +58,20 @@ const X_DECL  = 0x21;  // !  declaration / processing-instruction / CDATA
 // The cpp conditionals are bracket-ROLE tokens, but they must not overload the
 // true braces (RATFOR principle, refined: preserve the role, mark the family).
 // They render as family-marked digraphs — the '#' bookends the block on the
-// OUTSIDE at both ends:   #{  …  #:  …  }#
-// The tag BYTES below stay single (internal discriminators); the digraph lives
-// in the projection layer (mnemonicOf), which relaxes §7's "length == token
-// count" for this family — a fair trade, the projection is the lossy human view.
-const P_IF    = 0x3F;  // renders '#{'  #if / #ifdef / #ifndef  (open)
-const P_ELSE  = 0x3A;  // renders '#:'  #elif / #else            (branch marker, no nesting)
-const P_ENDIF = 0x3B;  // renders '}#'  #endif                   (close)
+// OUTSIDE at both ends:   #{  …  }# #{  …  }#
+// #else / #elif render as '}# #{': a branch marker IS a close+open pair at the
+// same depth, so every segment reads as a balanced block by eye.
+// The tag BYTES below stay single (internal discriminators); the rendering
+// lives in the projection layer (mnemonicOf), which relaxes §7's "length ==
+// token count" for this family — the projection is the lossy human view.
+const P_IF    = 0x3F;  // renders '#{'     #if / #ifdef / #ifndef  (open)
+const P_ELSE  = 0x3A;  // renders '}# #{'  #elif / #else            (close+open, one token)
+const P_ENDIF = 0x3B;  // renders '}#'     #endif                   (close)
 
-// tag byte → printable mnemonic (single char, except the cpp digraphs)
+// tag byte → printable mnemonic (single char, except the cpp family)
 function mnemonicOf(tag) {
   if (tag === P_IF)    return '#{';
-  if (tag === P_ELSE)  return '#:';
+  if (tag === P_ELSE)  return '}# #{';
   if (tag === P_ENDIF) return '}#';
   return String.fromCharCode(tag);
 }

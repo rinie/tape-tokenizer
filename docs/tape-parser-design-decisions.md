@@ -553,9 +553,10 @@ deep.** `{` is what an open *is* — whether the underlying "FORTRAN" spells it
 **Refinement (owner's call): preserve the role, mark the family — never
 overload.** Two *different* nesting families must not collapse onto one symbol:
 C's `#if` is bracket-role but it is not a brace, so it renders as a
-family-marked digraph — `#{` opens, `#:` branches, `}#` closes — the `#`
-bookending the block on the OUTSIDE at both ends (`}#` over `#}`, mirroring
-`#{`). The brace shape carries the role; the `#` carries the family. XML tags
+family-marked digraph — `#{` opens, `}#` closes, and `#else`/`#elif` render as
+`}# #{` (a branch marker IS a close+open pair at the same depth, so every
+segment reads as a balanced block) — the `#` bookending each block on the
+OUTSIDE at both ends (`}#` over `#}`, mirroring `#{`). The brace shape carries the role; the `#` carries the family. XML tags
 *may* use plain `{`/`}` because in an XML file there is no second brace family
 to collide with; in C there is. (Tag bytes stay single internally — the digraph
 lives in the projection layer, slightly relaxing §7's "length == token count"
