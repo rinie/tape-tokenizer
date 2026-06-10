@@ -38,6 +38,8 @@ node scan.js --own src\         :: your code: seams are errors
 node scan.js -l c kernel\*.c    :: force the C table
 node scan.js --defuse app.js    :: balance + def/use projection (JS)
 node scan.js --tape app.js      :: print the structural tape as indented ASCII
+node scan.js --outline 1 app.js :: folded breadth-first view (raise to peel)
+node sfdiff.js old.js new.js    :: subforest diff — whole units, not line deltas
 node scan.js --help             :: full usage
 ```
 
@@ -55,6 +57,7 @@ harvest.js           derive a lexical table from a *.tmLanguage.json grammar
 defuse.js            breadth-first def/use projection (on the value-token tape)
 valuetape.js         §13b spike: lossless, fully-pooled value tape (dedup by kind)
 mergegate.js         §13c spike: scanner as a structure-aware merge gate
+sfdiff.js            subforest diff — compare versions as whole top-level units
 tokenizer.js         the original flat value-token tape (idents + intern pool)
 token-tags.js        tag-byte constants for tokenizer.js
 demos/               runnable demos for each piece (node demos/demo-*.js)
