@@ -40,6 +40,8 @@ node scan.js --defuse app.js    :: balance + def/use projection (JS)
 node scan.js --tape app.js      :: print the structural tape as indented ASCII
 node scan.js --outline 1 app.js :: folded breadth-first view (raise to peel)
 node sfdiff.js old.js new.js    :: subforest diff — whole units, not line deltas
+node tdump.js app.js            :: token dump (pool index/value; quiet whitespace)
+node tdump.js --signal app.js   :: significant tokens only; --full = revertible
 node scan.js --help             :: full usage
 ```
 
@@ -54,14 +56,15 @@ validate.js          batch validator + built-in self-test suite
 lexical-scanner.js   the structural scanner + the lexical tables (JS/C/PY/XML)
 bracket-scanner.js   milestone-1 reference: bracket-only scanner
 harvest.js           derive a lexical table from a *.tmLanguage.json grammar
-defuse.js            breadth-first def/use projection (on the value-token tape)
+defuse.js            breadth-first def/use projection (rides unilexer.js)
+tdump.js             token dump: pool index/value pairs; full | brief | signal
 unilexer.js          ONE lexer, ONE tape: value pools + structural links in a
                      single pass; the tag byte IS the printable mnemonic (JS)
 valuetape.js         §13b spike (historical; superseded by unilexer.js)
 mergegate.js         §13c spike: scanner as a structure-aware merge gate
 sfdiff.js            subforest diff — compare versions as whole top-level units
-tokenizer.js         the original flat value-token tape (idents + intern pool)
-token-tags.js        tag-byte constants for tokenizer.js
+tokenizer.js         the original flat value-token tape (historical; demo-only)
+token-tags.js        the mnemonic tag-byte scheme (shared by unilexer + tokenizer)
 demos/               runnable demos for each piece (node demos/demo-*.js)
 samples/             real files used for validation (incl. a C TextMate grammar)
 docs/                design docs (see below)

@@ -481,8 +481,89 @@ ghost │ f I(I, I) {                    c I = [N, D, N];
 (Note the `N`/`D` int-vs-float distinction surviving into the ghost.)
 
 **Migration state (honest):** sfdiff.js rides unilexer (verified byte-identical
-verdicts); valuetape.js stays as the 13b historical spike. tokenizer.js
-(defuse) and lexical-scanner.js (scan/validate — seams, cpp/XML families,
-multi-language tables, the harvested-table mechanism) are the remaining
-targets; the structural-seam machinery moves last because it is the most
-load-bearing. Until then unilexer is JS-only by construction.
+verdicts); defuse.js rides unilexer (verified semantically identical — tape
+indices shift because ws/comment tokens now occupy slots); valuetape.js stays
+as the 13b historical spike and tokenizer.js is now demo-only.
+lexical-scanner.js (scan/validate — seams, cpp/XML families, multi-language
+tables, the harvested-table mechanism) is the remaining target; the
+structural-seam machinery moves last because it is the most load-bearing.
+Until then unilexer is JS-only by construction.
+
+### 13f. Whitespace association & the dump views — projections, not tape columns
+
+> **Spiked** — `tdump.js`; defuse migration in the same PR.
+
+**The question:** should whitespace be *associated* with a leading/following
+"real" token, and would that complicate the tape?
+
+**The decision: no tape change.** Whitespace tokens already sit physically
+adjacent to their neighbours on the uniform tape (13b/13e), so attachment is
+**derivable by adjacency in O(1)** — the ws token before a real token *is* its
+leading trivia; the one after *is* its trailing. Conventions that split runs
+(Roslyn-style: trailing trivia ends at the first newline, the rest leads the
+next token) are equally derivable. Storing an owner column would bake ONE
+attachment policy into the substrate; deriving keeps the tape Gutenberg-neutral
+and lets each consumer attach differently (sfdiff ignores trivia entirely; a
+span-mover takes the leading ws with the span; a comment-docs tool binds
+comments forward). **Association is a view, not a fact of the tape.**
+
+**The dump views (`tdump.js`)** — three projections over the one unchanged tape:
+
+- `--full` — complete and revertible: exact JSON-escaped lexemes; the value
+  column concatenates back to the original source (verified in the footer).
+- `--brief` (default) — the signal with quiet whitespace (notation below).
+- `--signal` — significant tokens only; trivia omitted *from the view* (it is
+  still on the tape — a view, not a loss). Tape indices stay stable across
+  views.
+
+Each row is `[tape index] tag-char class#poolIndex value` — the index/value
+pair listed next to the lexer, with interned classes visibly reusing pool
+slots (`ws#0` is *the* single inter-token space). **Values are bare** in
+brief/signal (the class column already implies the kind — quotes would be
+noise; a string's own quotes are part of its lexeme and show naturally);
+`--full` JSON-escapes the exact source text so the column reverts.
+
+**XML on the unified tape — structural role over surface syntax** (owner's
+call): an open tag projects as `{` and a close tag as `}` — the universal
+bracket mnemonics — with the tag NAME as the pooled value. Names are interned,
+so `<book>` and `</book>` share one pool slot (`{ tag#1 book` / `} tag#1 book`)
+— the O(1) name match made visible in the dump. Text is `T`, declarations `!`,
+comments `#`; attributes tokenize as ident/op/string inside the tag.
+Losslessness holds: the `<` / `</` prefix is implied by the tag byte and
+restored on reconstruction. Free bonus: `toPrintable()` of XML is the same
+ghost-source skeleton as code — `<title>text</title>` reads `{>T}>`. This is
+the first bite of the lexical-scanner migration (13e).
+
+**The name for this is the RATFOR principle** (owner's framing — Kernighan &
+Plauger, *Software Tools*, 1976). RATFOR's stance: FORTRAN's surface syntax is
+not a reasonable medium for *seeing* structure, so give the structure one
+rational surface (`{}` blocks, free form) and treat the underlying syntax as a
+compilation detail. The mnemonic projection is the same move generalised:
+**prefer the rational representation; don't follow the surface syntax too
+deep.** `{` is what an open *is* — whether the underlying "FORTRAN" spells it
+`{`, `<book>`, or `#if`. One inversion: RATFOR was a *writing* tool (author
+rationally, compile down, never read the output); ours is a *reading*
+projection (ingest any surface, view it rationally) — and because the tape is
+lossless, the arrow runs both ways. The per-language lexical table (§2) is
+exactly the "FORTRAN backend" of this scheme: the only place surface syntax is
+allowed to matter.
+
+**Brief whitespace notation** — report the common cases briefly, surface only
+the deviations. The file's **indent unit** (tabs, or the most common
+space-step) is detected once and declared in the header; then:
+
+| rendering | meaning |
+|---|---|
+| `' '` | one inter-token space (the overwhelmingly common case) |
+| `' '(n)` / `\t(n)` | n spaces / tabs on one line |
+| `\n` | newline, **same** indent level — quiet |
+| `+\n` `-\n` `+2\n` | newline, level changed by that many units — **the sign leads** |
+| `\n(k)` | k consecutive newlines (blank lines); with a change: `+\n(2)` |
+| `…"  "` | an off-unit indent shown explicitly — a deviation worth seeing |
+
+The sign comes **first** (owner's call, and the original `+\t`/`-\t` spec):
+scanning the value column, a level change jumps out at the first glyph, while
+quiet `\n` rows share no prefix with it — and it rides the diff `+`/`-` reflex.
+The level *change* is the information; unchanged levels stay quiet — the same
+breadth-first instinct as the folding outline (13d's `--outline`): show the
+skeleton, fold the routine.

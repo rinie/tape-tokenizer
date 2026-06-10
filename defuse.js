@@ -4,9 +4,12 @@
 // materialising the dependency DAG. The trick is adjacency at ONE level — direct
 // edges between top-level definitions — never transitive closure.
 //
-// Substrate: tokenizer.js (idents + intern pool + bracket jump pointers). The
-// jump pointers let pass 1 enumerate top-level defs by O(1) skipping each body;
-// the intern ids make def↔use an integer compare.
+// Substrate: unilexer.js — the consolidated tape. Keyword/literal tag bytes are
+// the same token-tags mnemonics, the structural links let pass 1 enumerate
+// top-level defs by O(1) skipping each body, and the interned ident pool index
+// makes def↔use an integer compare. (Originally rode tokenizer.js; migrated in
+// the §13e consolidation. The unified tape also carries ws/comment tokens —
+// they are simply never matched by the branches below.)
 //
 // Linter-grade, honest scope: recognises `function NAME …{}` and `class NAME …{}`
 // top-level declarations (clear brace bodies). const/arrow forms and nested-scope
@@ -14,17 +17,19 @@
 // bottom. Positional ordering uses the tape index (monotonic in source order;
 // 0-based below the waterline).
 
-import { Tokenizer } from './tokenizer.js';
+import { UniLexer } from './unilexer.js';
 import { T } from './token-tags.js';
 
 function isOpen(tag)  { return tag === T.LBRACE || tag === T.LPAREN || tag === T.LBRACKET; }
 function isClose(tag) { return tag === T.RBRACE || tag === T.RPAREN || tag === T.RBRACKET; }
 
-// Pass 1 + Pass 2 — enumerate depth-0 defs (skipping bodies via jumps), then
+// Pass 1 + Pass 2 — enumerate depth-0 defs (skipping bodies via links), then
 // collect each body's direct uses of other top-level names.
-function extractDefUse(result) {
-  const { tag, payload, identName } = result;
-  const len = result.tape.length;
+function extractDefUse(u) {
+  const tag = u.tagOf;
+  const identId = (t) => u.poolArr[t];   // interned ident pool index = stable id
+  const identName = (t) => u.lexemeOf(t);
+  const len = u.length;
 
   // Pass 1 — top-level definitions only. Skip each body in O(1) via its jump.
   const defs = [];
@@ -44,10 +49,12 @@ function extractDefUse(result) {
         if (isOpen(tk)) d++;
         else if (isClose(tk)) { if (d === 0) break; d--; }
       }
-      if (nameIdx !== -1 && bodyOpen !== -1) {
-        const bodyClose = payload(bodyOpen);
+      // unmatched body brace → link -1: no unit (tolerant; the seam is the
+      // structural layer's finding, not ours)
+      const bodyClose = bodyOpen === -1 ? -1 : u.linkOf(bodyOpen);
+      if (nameIdx !== -1 && bodyOpen !== -1 && bodyClose > bodyOpen) {
         defs.push({
-          nameId: payload(nameIdx), name: identName(nameIdx),
+          nameId: identId(nameIdx), name: identName(nameIdx),
           index: nameIdx, kind: t === T.KW_CLASS ? 'class' : 'function',
           bodyOpen, bodyClose, uses: new Map(),
         });
@@ -66,7 +73,7 @@ function extractDefUse(result) {
   for (const def of defs) {
     for (let p = def.bodyOpen + 1; p < def.bodyClose; p++) {
       if (tag(p) === T.IDENT) {
-        const id = payload(p);
+        const id = identId(p);
         if (id !== def.nameId && topIds.has(id) && !def.uses.has(id)) def.uses.set(id, p);
       }
     }
@@ -150,7 +157,7 @@ function topoOrder(du) {
 
 // Convenience: tokenize then extract.
 function analyze(src) {
-  const result = new Tokenizer().tokenize(src);
+  const result = new UniLexer().tokenize(src);
   return { result, du: extractDefUse(result) };
 }
 
