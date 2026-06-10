@@ -55,7 +55,9 @@ lexical-scanner.js   the structural scanner + the lexical tables (JS/C/PY/XML)
 bracket-scanner.js   milestone-1 reference: bracket-only scanner
 harvest.js           derive a lexical table from a *.tmLanguage.json grammar
 defuse.js            breadth-first def/use projection (on the value-token tape)
-valuetape.js         §13b spike: lossless, fully-pooled value tape (dedup by kind)
+unilexer.js          ONE lexer, ONE tape: value pools + structural links in a
+                     single pass; the tag byte IS the printable mnemonic (JS)
+valuetape.js         §13b spike (historical; superseded by unilexer.js)
 mergegate.js         §13c spike: scanner as a structure-aware merge gate
 sfdiff.js            subforest diff — compare versions as whole top-level units
 tokenizer.js         the original flat value-token tape (idents + intern pool)

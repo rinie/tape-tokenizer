@@ -4,14 +4,14 @@
 //   node sfdiff.js samples/sfdiff-old.js samples/sfdiff-new.js
 import { readFileSync } from 'node:fs';
 import { topLevelUnits, diffForests } from '../sfdiff.js';
-import { ValueTape } from '../valuetape.js';
+import { UniLexer } from '../unilexer.js';
 
 const oldSrc = readFileSync('samples/sfdiff-old.js', 'utf8');
 const newSrc = readFileSync('samples/sfdiff-new.js', 'utf8');
 
 const rows = diffForests(
-  topLevelUnits(new ValueTape().tokenize(oldSrc)),
-  topLevelUnits(new ValueTape().tokenize(newSrc)),
+  topLevelUnits(new UniLexer().tokenize(oldSrc)),
+  topLevelUnits(new UniLexer().tokenize(newSrc)),
 );
 
 console.log('═══ subforest diff (breadth-first: whole units, matched by name) ══');
