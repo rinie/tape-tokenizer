@@ -7,9 +7,81 @@ what was learned, including the wrong turns, in the spirit of the design's own
 
 The arc: a flat **value-token tape** (PR #1, pre-project) grew into a tolerant,
 positional **structural scanner** (#2–#10), with the design philosophy
-(Postel's Law + Chesterton's Fence) crystallising along the way.
+(Postel's Law + Chesterton's Fence) crystallising along the way; then the
+housekeeping wave (#11–#14: layout, line endings, surface conventions) and the
+**breadth-first projections** built on it (#15–#18: tape views, the §13 spikes,
+the subforest diff).
 
-## Unreleased — repository cleanup (PR #11)
+## PR #18 — Breadth-first views: folding outline + subforest diff · 2026-06-10
+
+- `scan.js --outline <n>`: the tape **folded** at depth *n* — a matched opener
+  collapses its whole span to one line (`{ … 12 … }`) via its jump pointer;
+  raise *n* to peel one more layer. Unmatched openers are never folded (no
+  guessed ends) — they print `…?`.
+- `sfdiff.js` (**§13d, spiked**): the subforest diff — compare two versions as a
+  forest of whole top-level units **matched by name**, fingerprinted over
+  significant tokens. Whitespace and comments are separate kinds on the value
+  tape, so reformatting reads as *unchanged*, a relocated unit as *moved*, and a
+  one-token edit as *modified* with the first differing token shown for both
+  sides. On the demo pair: ~11 changed lines on the line grid vs **one** changed
+  token on the structural grid. Exit 0 = structurally identical, so it doubles
+  as a reformat-safety check.
+
+## PR #17 — Spike: structure-aware merge gate (§13c) · 2026-06-09
+
+- `mergegate.js`: `splitConflict()` reconstructs ours/theirs from a
+  conflict-marked file; `mergeGate()` rejects any resolution that is *more
+  structurally broken than its parents* (a seam kind exceeding
+  `max(ours, theirs)` was introduced by the merge). Demonstrated: a botched
+  resolution dropping a `}` is rejected with `1× unmatched-open`; clean picks
+  pass.
+- Also demonstrated the §13c thesis literally: a conflict whose markers split a
+  `while {` from its closing `}` leaves the reconstructed parent unbalanced —
+  the line grid cutting across a structural span. Operation 1 (re-seaming
+  conflicts to spans) remains future work.
+
+## PR #16 — Spike: lossless fully-pooled value tape (§13b) · 2026-06-09
+
+- `valuetape.js`: every token — whitespace and comments included — on a dense
+  integer tape as `(kind, poolIndex, offset)`, with per-kind value pools beside
+  it. **Dedup keyed to uniqueness**: ws/ident/keyword/punct interned (whitespace
+  compressed ~6× on the sample), literals stored per occurrence. Interned
+  entries carry occurrence offsets — the cross-reference §13a queries.
+- `reconstruct()` rebuilds the source **byte-for-byte from the pools**, proving
+  losslessness — the property that later made the subforest diff
+  whitespace-blind for free. Templates are one token (no `${}` split) — noted
+  limitation.
+
+## PR #15 — `scan.js --tape` · 2026-06-09
+
+- `-t/--tape` prints the structural tape as indented ASCII — one printable char
+  per token, indented by nesting depth — for any language table.
+
+## PR #14 — Cosmetic surface is liberal-only Postel · 2026-06-08  ⚠ correction
+
+- **Setback (a mis-stated principle), corrected the same day.** #13 had recorded
+  "accept both, warn for the exception" for line endings; the owner's actual
+  position is *no warning at all* for cosmetics. The doc now draws the line:
+  **structure** gets observe-and-report; **cosmetic surface** (line endings,
+  slashes, case) gets only the liberal half — accept any variant, normalise
+  silently. CRLF, lone `\r`, and mixed endings are explicitly *not* findings:
+  "A4 vs Letter — a different paper size in the same printer."
+
+## PR #13 — Unix `/` in scan output; surface conventions · 2026-06-08
+
+- `scan.js` displays paths with `/` regardless of OS (input accepts either
+  slash). Design §11 records the owner's surface conventions: lowercase, LF,
+  and `/` in anything the project emits — Windows development notwithstanding.
+
+## PR #12 — `.gitattributes`: normalise text to LF · 2026-06-08
+
+- `* text=auto eol=lf` ends the recurring CRLF warning noted in this file's
+  footnote (git was right to warn; the fix is declaring the canonical form).
+  Renormalisation was a no-op — the blobs were already LF — so the change is
+  the attribute file only. Warnings since flipped direction (`CRLF → LF`),
+  confirming the attribute governs.
+
+## PR #11 — Repository cleanup · 2026-06-08
 
 - **Reorganised the tree**: `demos/` for the runnable demos, `docs/` for the
   design docs; source stays at the root. `README.md` rewritten as a real front
@@ -113,5 +185,6 @@ positional **structural scanner** (#2–#10), with the design philosophy
 
 ### Recurring footnote
 
-Every push warned `LF will be replaced by CRLF` (Windows checkout, no
-`.gitattributes`). Cosmetic; line endings normalise on checkout. Left as-is.
+Every push through PR #11 warned `LF will be replaced by CRLF` (Windows
+checkout, no `.gitattributes`). Cosmetic; left as-is at the time — then
+resolved in PR #12 by declaring LF canonical.
