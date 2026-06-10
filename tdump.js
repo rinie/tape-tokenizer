@@ -146,6 +146,10 @@ function dumpTokens(src, mode = 'brief', lang = 'js') {
     const klass = u.classOf(t);
     const trivia = klass === KLASS.WS || klass === KLASS.COMMENT;
     if (mode === 'signal' && trivia) continue;
+    // xml: a bare '>' after attributes is a tag-closing separator, not signal.
+    // ('/>' stays — it says the element closed.) Attribute-less tags absorb
+    // their '>' into the tag token, so this row only occurs after attributes.
+    if (mode === 'signal' && lang === 'xml' && klass === KLASS.PUNCT && u.lexemeOf(t) === '>') continue;
 
     const lexeme = u.lexemeOf(t);
     let value;

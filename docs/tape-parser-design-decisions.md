@@ -529,10 +529,17 @@ bracket mnemonics — with the tag NAME as the pooled value. Names are interned,
 so `<book>` and `</book>` share one pool slot (`{ tag#1 book` / `} tag#1 book`)
 — the O(1) name match made visible in the dump. Text is `T`, declarations `!`,
 comments `#`; attributes tokenize as ident/op/string inside the tag.
-Losslessness holds: the `<` / `</` prefix is implied by the tag byte and
-restored on reconstruction. Free bonus: `toPrintable()` of XML is the same
-ghost-source skeleton as code — `<title>text</title>` reads `{>T}>`. This is
-the first bite of the lexical-scanner migration (13e).
+
+**The `>` is a closing separator, not a token of its own** (owner's call). An
+attribute-less tag absorbs it: `<catalog>` is ONE tape token. An
+attribute-less self-closing tag is one `/` token (`<br/>`). Only
+attribute-bearing tags keep a trailing separator token — `>` (elided from the
+signal view; it carries no signal) or `/>` (kept; it says the element closed).
+Losslessness holds because tag tokens reconstruct from their source SPAN
+(offset to next offset — §13b's offset+length raw-slice option), which carries
+the `<`/`</` prefix and any absorbed `>` for free. `toPrintable()` of XML is
+the same ghost-source skeleton as code — `<title>text</title>` reads `{T}`.
+This is the first bite of the lexical-scanner migration (13e).
 
 **The name for this is the RATFOR principle** (owner's framing — Kernighan &
 Plauger, *Software Tools*, 1976). RATFOR's stance: FORTRAN's surface syntax is
