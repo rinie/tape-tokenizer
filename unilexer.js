@@ -36,9 +36,11 @@ import { T, KEYWORDS } from './token-tags.js';
 const KLASS = {
   WS: 0, COMMENT: 1, STRING: 2, TEMPLATE: 3, REGEX: 4,
   NUMBER: 5, IDENT: 6, KEYWORD: 7, OP: 8, PUNCT: 9, BRACKET: 10,
+  TAG: 11, TEXT: 12, DECL: 13,          // XML mode
 };
 const KLASS_NAME = ['ws', 'comment', 'string', 'template', 'regex',
-  'number', 'ident', 'keyword', 'op', 'punct', 'bracket'];
+  'number', 'ident', 'keyword', 'op', 'punct', 'bracket',
+  'tag', 'text', 'decl'];
 
 const TAG_WS      = 0x20;     // ' '
 const TAG_COMMENT = 0x23;     // '#'
@@ -60,8 +62,28 @@ for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]
 }
 
 // Dedup policy (§13b): intern the limited vocabularies, store literals per
-// occurrence — the waste is acceptable.
-const INTERNED = new Set([KLASS.WS, KLASS.IDENT, KLASS.KEYWORD, KLASS.OP, KLASS.PUNCT, KLASS.BRACKET]);
+// occurrence — the waste is acceptable. XML tag NAMES are a limited vocabulary
+// (interned — open and close share the pool slot, making the name match
+// visible); text/decl content is mostly unique (per occurrence).
+const INTERNED = new Set([KLASS.WS, KLASS.IDENT, KLASS.KEYWORD, KLASS.OP, KLASS.PUNCT, KLASS.BRACKET, KLASS.TAG]);
+
+// ── XML mode: structural role over surface syntax ────────────────────────────
+// The mnemonic projection uses the STRUCTURAL role, not the source characters:
+// every open tag is `{`, every close tag is `}` — the universal bracket
+// mnemonics — with the tag NAME as the pooled value. `<book>` → `{ tag#1 book`,
+// `</book>` → `} tag#1 book` (same pool slot). Text content is `T`, comments
+// `#`, declarations/PI/CDATA `!`. Attributes inside a tag tokenize as
+// ident/op/string; `>` and `/>` are punct.
+const TAG_CLASS_XML = new Uint8Array(256).fill(KLASS.PUNCT);
+TAG_CLASS_XML[TAG_WS] = KLASS.WS;
+TAG_CLASS_XML[TAG_COMMENT] = KLASS.COMMENT;     // #
+TAG_CLASS_XML[0x21] = KLASS.DECL;               // !  <?…?> <!…> <![CDATA[…]]>
+TAG_CLASS_XML[0x7B] = KLASS.TAG;                // {  open tag
+TAG_CLASS_XML[0x7D] = KLASS.TAG;                // }  close tag
+TAG_CLASS_XML[0x54] = KLASS.TEXT;               // T  text content
+TAG_CLASS_XML[T.STRING] = KLASS.STRING;         // S  attribute values
+TAG_CLASS_XML[T.IDENT] = KLASS.IDENT;           // I  attribute names
+TAG_CLASS_XML[T.OP] = KLASS.OP;                 // =
 
 const CLOSE_OF = { [T.LPAREN]: T.RPAREN, [T.LBRACKET]: T.RBRACKET, [T.LBRACE]: T.RBRACE };
 const IS_OPEN  = new Set([T.LPAREN, T.LBRACKET, T.LBRACE]);
@@ -209,7 +231,169 @@ class UniLexer {
       i = end;
     }
 
-    return this._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools);
+    return this._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, TAG_CLASS, false);
+  }
+
+  // ── XML mode — same uniform tape, structural-role mnemonics ───────────────
+  // Open tag token = `<name` (byte '{', value = interned NAME); close tag =
+  // `</name` (byte '}', same name pool). Inside a tag, attributes tokenize as
+  // ident/op/string and '>' / '/>' as punct. Outside, text runs are one TEXT
+  // token (whitespace-only runs are WS). Tag pairs are name-matched onto the
+  // link array, tolerantly (no fault on improper nesting or orphans).
+  tokenizeXml(src) {
+    const len = src.length;
+    const pools = KLASS_NAME.map(() => []);
+    const internMaps = KLASS_NAME.map((_, k) => (INTERNED.has(k) ? new Map() : null));
+
+    let cap = 1024;
+    let tagArr = new Uint8Array(cap);
+    let poolArr = new Uint32Array(cap);
+    let offArr = new Uint32Array(cap);
+    let linkArr = new Int32Array(cap).fill(-1);
+    let depthArr = new Uint32Array(cap);
+    let n = 0;
+
+    const grow = () => {
+      cap *= 2;
+      const a = new Uint8Array(cap); a.set(tagArr); tagArr = a;
+      const b = new Uint32Array(cap); b.set(poolArr); poolArr = b;
+      const c = new Uint32Array(cap); c.set(offArr); offArr = c;
+      const d = new Int32Array(cap).fill(-1); d.set(linkArr.subarray(0, n)); linkArr = d;
+      const e = new Uint32Array(cap); e.set(depthArr); depthArr = e;
+    };
+
+    const addToPool = (klass, lexeme, off) => {
+      const pool = pools[klass];
+      if (INTERNED.has(klass)) {
+        const m = internMaps[klass];
+        let idx = m.get(lexeme);
+        if (idx === undefined) { idx = pool.length; pool.push({ lexeme, occ: [] }); m.set(lexeme, idx); }
+        pool[idx].occ.push(off);
+        return idx;
+      }
+      const idx = pool.length;
+      pool.push({ lexeme, off });
+      return idx;
+    };
+
+    const emit = (tag, klass, lexeme, off, depth) => {
+      if (n >= cap) grow();
+      tagArr[n] = tag;
+      poolArr[n] = addToPool(klass, lexeme, off);
+      offArr[n] = off;
+      linkArr[n] = -1;
+      depthArr[n] = depth;
+      return n++;
+    };
+
+    const isNameChar = (c) => (c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A) ||
+      (c >= 0x30 && c <= 0x39) || c === 0x2D || c === 0x5F || c === 0x3A || c === 0x2E;
+
+    const stack = [];   // open tags: { idx, poolIdx }
+    let depth = 0;
+    let inTag = false;
+    let i = 0;
+
+    while (i < len) {
+      const start = i;
+      const c = src.charCodeAt(i);
+
+      if (!inTag) {
+        if (c === 0x3C) {                                            // '<'
+          if (src.startsWith('<!--', i)) {
+            let j = i + 4; while (j < len && !src.startsWith('-->', j)) j++;
+            j = Math.min(j + 3, len);
+            emit(TAG_COMMENT, KLASS.COMMENT, src.slice(start, j), start, depth);
+            i = j; continue;
+          }
+          if (src.startsWith('<![CDATA[', i)) {
+            let j = i + 9; while (j < len && !src.startsWith(']]>', j)) j++;
+            j = Math.min(j + 3, len);
+            emit(0x21, KLASS.DECL, src.slice(start, j), start, depth);
+            i = j; continue;
+          }
+          if (src.startsWith('<?', i) || src.startsWith('<!', i)) {
+            let j = i + 2; let q = 0;
+            while (j < len) {                                        // to '>' honoring quotes
+              const cj = src.charCodeAt(j);
+              if (q) { if (cj === q) q = 0; }
+              else if (cj === 0x22 || cj === 0x27) q = cj;
+              else if (cj === 0x3E) { j++; break; }
+              j++;
+            }
+            emit(0x21, KLASS.DECL, src.slice(start, j), start, depth);
+            i = j; continue;
+          }
+          const isClose = src.charCodeAt(i + 1) === 0x2F;            // '</'
+          let j = i + (isClose ? 2 : 1);
+          const nameStart = j;
+          while (j < len && isNameChar(src.charCodeAt(j))) j++;
+          const name = src.slice(nameStart, j);
+          if (!name) {                                               // bare '<' — punct
+            emit(0x3C, KLASS.PUNCT, '<', start, depth);
+            i++; continue;
+          }
+          if (isClose) {
+            depth = depth > 0 ? depth - 1 : 0;
+            const idx = emit(0x7D, KLASS.TAG, name, start, depth);   // '}'
+            // tolerant name-match: nearest open with the same pool slot
+            for (let s = stack.length - 1; s >= 0; s--) {
+              if (stack[s].poolIdx === poolArr[idx]) {
+                linkArr[stack[s].idx] = idx;
+                linkArr[idx] = stack[s].idx;
+                stack.splice(s, 1);
+                break;
+              }
+            }
+          } else {
+            const idx = emit(0x7B, KLASS.TAG, name, start, depth);   // '{'
+            stack.push({ idx, poolIdx: poolArr[idx] });
+            depth++;
+          }
+          i = j; inTag = true; continue;
+        }
+        // text run up to the next '<'; whitespace-only runs are WS
+        let j = i; while (j < len && src.charCodeAt(j) !== 0x3C) j++;
+        const run = src.slice(start, j);
+        if (/^\s+$/.test(run)) emit(TAG_WS, KLASS.WS, run, start, depth);
+        else emit(0x54, KLASS.TEXT, run, start, depth);              // 'T'
+        i = j; continue;
+      }
+
+      // inside a tag: attributes until '>' or '/>'
+      if (c === 0x20 || c === 0x09 || c === 0x0A || c === 0x0D) {
+        let j = i + 1; while (j < len && /\s/.test(src[j])) j++;
+        emit(TAG_WS, KLASS.WS, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      if (c === 0x22 || c === 0x27) {                                // attr value
+        let j = i + 1; while (j < len && src.charCodeAt(j) !== c) j++;
+        j = Math.min(j + 1, len);
+        emit(T.STRING, KLASS.STRING, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      if (c === 0x3E) {                                              // '>'
+        emit(0x3E, KLASS.PUNCT, '>', start, depth);
+        i++; inTag = false; continue;
+      }
+      if (c === 0x2F && src.charCodeAt(i + 1) === 0x3E) {            // '/>' self-close
+        depth = depth > 0 ? depth - 1 : 0;
+        const idx = emit(0x3E, KLASS.PUNCT, '/>', start, depth);
+        const top = stack.pop();
+        if (top) { linkArr[top.idx] = idx; linkArr[idx] = top.idx; }
+        i += 2; inTag = false; continue;
+      }
+      if (isNameChar(c)) {                                           // attr name
+        let j = i + 1; while (j < len && isNameChar(src.charCodeAt(j))) j++;
+        emit(T.IDENT, KLASS.IDENT, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      if (c === 0x3D) { emit(T.OP, KLASS.OP, '=', start, depth); i++; continue; }
+      emit(c < 128 ? c : T.OP, KLASS.PUNCT, src[i], start, depth);
+      i++;
+    }
+
+    return this._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, TAG_CLASS_XML, true);
   }
 
   _str(src, i, quote) {
@@ -267,17 +451,28 @@ class UniLexer {
     return j;
   }
 
-  _result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools) {
+  _result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, classTable = TAG_CLASS, xml = false) {
     const tagOf    = (t) => tagArr[t];
     const charOf   = (t) => String.fromCharCode(tagArr[t]);
-    const classOf  = (t) => TAG_CLASS[tagArr[t]];
-    const lexemeOf = (t) => pools[TAG_CLASS[tagArr[t]]][poolArr[t]].lexeme;
+    const classOf  = (t) => classTable[tagArr[t]];
+    const lexemeOf = (t) => pools[classTable[tagArr[t]]][poolArr[t]].lexeme;
     const offsetOf = (t) => offArr[t];
     const linkOf   = (t) => linkArr[t];
     const depthOf  = (t) => depthArr[t];
 
+    // The exact source text of one token. For XML tag tokens the pooled value
+    // is the NAME (interned, shared by open and close); the '<' / '</' prefix
+    // is implied by the tag byte and restored here.
+    const rawOf = (t) => {
+      if (xml && classTable[tagArr[t]] === KLASS.TAG) {
+        return (tagArr[t] === 0x7B ? '<' : '</') + lexemeOf(t);
+      }
+      return lexemeOf(t);
+    };
+
     // One mnemonic char per token — keywords whisper, literals shout, brackets
-    // are literal, whitespace breathes. Ghost source.
+    // are literal, whitespace breathes. Ghost source. (In XML mode, open/close
+    // tags project as `{` / `}` — the structural role, not the surface syntax.)
     function toPrintable() {
       let out = '';
       for (let t = 0; t < n; t++) out += String.fromCharCode(tagArr[t]);
@@ -285,10 +480,10 @@ class UniLexer {
     }
 
     // Byte-for-byte reconstruction from the pools — the §13b losslessness proof,
-    // now on the unified tape.
+    // now on the unified tape (tag tokens restore their implied '<' / '</').
     function reconstruct() {
       let out = '';
-      for (let t = 0; t < n; t++) out += pools[TAG_CLASS[tagArr[t]]][poolArr[t]].lexeme;
+      for (let t = 0; t < n; t++) out += rawOf(t);
       return out;
     }
 
@@ -305,7 +500,7 @@ class UniLexer {
 
     function poolStats() {
       const tokensByClass = new Array(KLASS_NAME.length).fill(0);
-      for (let t = 0; t < n; t++) tokensByClass[TAG_CLASS[tagArr[t]]]++;
+      for (let t = 0; t < n; t++) tokensByClass[classTable[tagArr[t]]]++;
       return KLASS_NAME.map((name, k) => ({
         name, interned: INTERNED.has(k), tokens: tokensByClass[k], entries: pools[k].length,
       }));
@@ -317,17 +512,20 @@ class UniLexer {
       return [];
     }
 
-    // Minimal balance query on the unified tape: unmatched/orphan brackets with
-    // both boundaries where known. (Seams/cpp/XML stay with lexical-scanner
-    // until that migration.)
+    // Minimal balance query on the unified tape: unmatched/orphan brackets and
+    // tags with both boundaries where known. (Full seam machinery — cpp family,
+    // provenance — stays with lexical-scanner until that migration.)
     function repairMap() {
       const findings = [];
       for (let t = 0; t < n; t++) {
-        if (TAG_CLASS[tagArr[t]] !== KLASS.BRACKET || linkArr[t] !== -1) continue;
-        if (IS_OPEN.has(tagArr[t])) {
-          findings.push({ kind: 'unmatched-open', char: charOf(t), offset: offArr[t], startOffset: offArr[t], endOffset: src.length, tapeIndex: t });
+        const k = classTable[tagArr[t]];
+        if ((k !== KLASS.BRACKET && k !== KLASS.TAG) || linkArr[t] !== -1) continue;
+        const isTag = k === KLASS.TAG;
+        const ch = isTag ? lexemeOf(t) : charOf(t);
+        if (IS_OPEN.has(tagArr[t]) || tagArr[t] === 0x7B) {
+          findings.push({ kind: isTag ? 'unclosed-tag' : 'unmatched-open', char: ch, offset: offArr[t], startOffset: offArr[t], endOffset: src.length, tapeIndex: t });
         } else {
-          findings.push({ kind: 'orphan-close', char: charOf(t), offset: offArr[t], tapeIndex: t });
+          findings.push({ kind: isTag ? 'orphan-close-tag' : 'orphan-close', char: ch, offset: offArr[t], tapeIndex: t });
         }
       }
       return findings;
@@ -336,7 +534,7 @@ class UniLexer {
     return {
       length: n, tagArr, poolArr, offArr, linkArr, depthArr, pools, src,
       KLASS, KLASS_NAME, INTERNED,
-      tagOf, charOf, classOf, lexemeOf, offsetOf, linkOf, depthOf,
+      tagOf, charOf, classOf, lexemeOf, offsetOf, linkOf, depthOf, rawOf,
       toPrintable, reconstruct, dump, poolStats, occurrences, repairMap,
     };
   }

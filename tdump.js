@@ -30,6 +30,7 @@
 //                explicitly — that deviation is worth seeing.
 
 import { readFileSync } from 'node:fs';
+import { extname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { UniLexer, KLASS, KLASS_NAME } from './unilexer.js';
@@ -43,21 +44,27 @@ USAGE
   node tdump.js [options] -          (read from stdin)
 
 OPTIONS
-      --full       Lossless view: every token, exact lexemes (JSON-escaped).
+      --full       Lossless view: every token, exact source text (JSON-escaped).
                    The value column concatenates back to the original source.
-      --brief      Default. Whitespace rendered as compact indent deltas
-                   (+\\n, -\\n, +2\\n — sign first); unchanged levels stay quiet.
+      --brief      Default. Bare values (the class column already implies the
+                   kind — quotes would be noise); whitespace as compact indent
+                   deltas (+\\n, -\\n, +2\\n — sign first), quiet when unchanged.
       --signal     Significant tokens only — no whitespace, no comments.
+  -l, --lang <l>   Force language: js | xml. Default: detect from the file
+                   extension (.xml/.html/.htm/.svg -> xml, else js).
   -h, --help       Show this help and exit.
   -V, --version    Print version and exit.
 
 COLUMNS
-  [tape index] tag-char class pool#index value
+  [tape index] tag-char class#poolIndex value
 
-  The tag char is the token-tags mnemonic (keywords whisper lowercase, literals
-  shout uppercase, brackets are literal). pool#index is the token's slot in its
-  per-class value pool — interned classes (ws, ident, keyword, op, punct,
-  bracket) reuse slots; literal classes get one slot per occurrence.
+  The tag char is the mnemonic for the STRUCTURAL role, not the surface syntax:
+  keywords whisper lowercase, literals shout uppercase, brackets are literal —
+  and in XML mode an open tag is { and a close tag is }, with the tag NAME as
+  the value (interned: <book> and </book> share the same pool slot).
+  Interned classes (ws, ident, keyword, op, punct, bracket, tag) reuse pool
+  slots; literal classes (string, number, comment, text, …) get one slot per
+  occurrence.
 `;
 
 function fail(msg) {
@@ -123,8 +130,12 @@ function briefWs(lexeme, unit, state) {
 }
 
 // ── the dump itself — a projection over the unchanged tape ───────────────────
-function dumpTokens(src, mode = 'brief') {
-  const u = new UniLexer().tokenize(src);
+// Brief/signal show BARE values: the class column already implies the kind, so
+// quotes are noise (a string's own quotes are part of its lexeme and show
+// naturally). Full shows the exact source text JSON-escaped — that column
+// concatenates back to the original.
+function dumpTokens(src, mode = 'brief', lang = 'js') {
+  const u = lang === 'xml' ? new UniLexer().tokenizeXml(src) : new UniLexer().tokenize(src);
   const unit = detectIndentUnit(src);
   const state = { units: 0 };
   const lines = [];
@@ -138,11 +149,13 @@ function dumpTokens(src, mode = 'brief') {
 
     const lexeme = u.lexemeOf(t);
     let value;
-    if (klass === KLASS.WS && mode === 'brief') value = briefWs(lexeme, unit, state);
-    else if (klass === KLASS.COMMENT && mode === 'brief') value = JSON.stringify(lexeme.length > 32 ? lexeme.slice(0, 32) + '…' : lexeme);
-    else value = JSON.stringify(lexeme);
+    if (mode === 'full') value = JSON.stringify(u.rawOf(t));               // exact, revertible
+    else if (klass === KLASS.WS) value = briefWs(lexeme, unit, state);
+    else if (klass === KLASS.COMMENT || klass === KLASS.TEXT || klass === KLASS.DECL) {
+      value = (lexeme.length > 40 ? lexeme.slice(0, 40) + '…' : lexeme).replace(/\n/g, '\\n');
+    } else value = lexeme;                                                 // bare — class implies kind
 
-    lines.push(`[${String(t).padStart(4)}] ${u.charOf(t)} ${KLASS_NAME[klass].padEnd(8)} ${KLASS_NAME[klass]}#${String(u.poolArr[t]).padEnd(4)} ${value}`);
+    lines.push(`[${String(t).padStart(4)}] ${u.charOf(t)} ${(KLASS_NAME[klass] + '#' + u.poolArr[t]).padEnd(12)} ${value}`);
   }
 
   const footer = [`${u.length} tokens`];
@@ -161,6 +174,7 @@ function main() {
         full:    { type: 'boolean' },
         brief:   { type: 'boolean' },
         signal:  { type: 'boolean' },
+        lang:    { type: 'string',  short: 'l' },
         help:    { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'V' },
       },
@@ -172,12 +186,18 @@ function main() {
   if (positionals.length !== 1) fail('expected exactly one file (or - for stdin)');
 
   const mode = values.full ? 'full' : values.signal ? 'signal' : 'brief';
+  let lang = values.lang;
+  if (lang && lang !== 'js' && lang !== 'xml') fail(`unknown --lang '${lang}' (expected js | xml)`);
+  if (!lang) {
+    const ext = positionals[0] === '-' ? '' : extname(positionals[0]).toLowerCase();
+    lang = ['.xml', '.html', '.htm', '.svg'].includes(ext) ? 'xml' : 'js';
+  }
   let src;
   try {
     src = positionals[0] === '-' ? readFileSync(0, 'utf8') : readFileSync(positionals[0], 'utf8');
   } catch { fail(`cannot read '${positionals[0]}'`); }
 
-  process.stdout.write(dumpTokens(src, mode) + '\n');
+  process.stdout.write(dumpTokens(src, mode, lang) + '\n');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

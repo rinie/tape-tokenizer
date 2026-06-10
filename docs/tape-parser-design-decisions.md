@@ -516,9 +516,23 @@ comments forward). **Association is a view, not a fact of the tape.**
   still on the tape — a view, not a loss). Tape indices stay stable across
   views.
 
-Each row is `[tape index] tag-char class pool#index value` — the
-index/value pair listed next to the lexer, with interned classes visibly
-reusing pool slots (`ws#0` is *the* single inter-token space).
+Each row is `[tape index] tag-char class#poolIndex value` — the index/value
+pair listed next to the lexer, with interned classes visibly reusing pool
+slots (`ws#0` is *the* single inter-token space). **Values are bare** in
+brief/signal (the class column already implies the kind — quotes would be
+noise; a string's own quotes are part of its lexeme and show naturally);
+`--full` JSON-escapes the exact source text so the column reverts.
+
+**XML on the unified tape — structural role over surface syntax** (owner's
+call): an open tag projects as `{` and a close tag as `}` — the universal
+bracket mnemonics — with the tag NAME as the pooled value. Names are interned,
+so `<book>` and `</book>` share one pool slot (`{ tag#1 book` / `} tag#1 book`)
+— the O(1) name match made visible in the dump. Text is `T`, declarations `!`,
+comments `#`; attributes tokenize as ident/op/string inside the tag.
+Losslessness holds: the `<` / `</` prefix is implied by the tag byte and
+restored on reconstruction. Free bonus: `toPrintable()` of XML is the same
+ghost-source skeleton as code — `<title>text</title>` reads `{>T}>`. This is
+the first bite of the lexical-scanner migration (13e).
 
 **Brief whitespace notation** — report the common cases briefly, surface only
 the deviations. The file's **indent unit** (tabs, or the most common
