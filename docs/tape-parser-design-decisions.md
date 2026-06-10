@@ -240,6 +240,10 @@ The rule (this is the waterline): **0-based below the waterline (offsets, depth,
   - **If `main` moved (you missed changes), merge `main` in** before continuing or
     pushing — don't build on a stale base. Merge (not rebase), keeping the
     owner's merge commits intact.
+  - **Before starting a new slice of work, check for unresolved PRs**
+    (`gh pr list --state open`) **and warn the owner** — let them decide whether
+    to resolve first or proceed. Don't silently stack new work over an unmerged
+    PR; that's how the #5/#6 duplicate-merge conflict happened.
 
 ## 12. Open questions to resolve with the repo owner
 
