@@ -191,9 +191,12 @@ language. Both are nesting structures; they share our one tape:
 | `#if … #endif` | line keyword | directive keyword | line-based |
 
 `C_TABLE` enables the second family with `preprocessor: true`. `#if` / `#ifdef`
-/ `#ifndef` open (`?` in the projection), `#elif` / `#else` mark a branch (`:`),
-`#endif` closes (`;`) — a mnemonic ternary shape `?…:…;`. They are keyword-
-matched (interned, O(1)) and live on the same stack as the braces.
+/ `#ifndef` open (`#{` in the projection), `#elif` / `#else` mark a branch
+(`#:`), `#endif` closes (`}#`) — family-marked digraphs, the `#` bookending the
+block on the outside at both ends: `#{ … #: … }#`. (Originally a ternary shape
+`?…:…;`; revised so the bracket ROLE stays visible without overloading the true
+braces.) They are keyword-matched (interned, O(1)) and live on the same stack
+as the braces.
 
 ## We scan as-written — we do NOT expand `#include`
 

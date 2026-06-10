@@ -541,7 +541,18 @@ rational surface (`{}` blocks, free form) and treat the underlying syntax as a
 compilation detail. The mnemonic projection is the same move generalised:
 **prefer the rational representation; don't follow the surface syntax too
 deep.** `{` is what an open *is* — whether the underlying "FORTRAN" spells it
-`{`, `<book>`, or `#if`. One inversion: RATFOR was a *writing* tool (author
+`{` or `<book>`.
+
+**Refinement (owner's call): preserve the role, mark the family — never
+overload.** Two *different* nesting families must not collapse onto one symbol:
+C's `#if` is bracket-role but it is not a brace, so it renders as a
+family-marked digraph — `#{` opens, `#:` branches, `}#` closes — the `#`
+bookending the block on the OUTSIDE at both ends (`}#` over `#}`, mirroring
+`#{`). The brace shape carries the role; the `#` carries the family. XML tags
+*may* use plain `{`/`}` because in an XML file there is no second brace family
+to collide with; in C there is. (Tag bytes stay single internally — the digraph
+lives in the projection layer, slightly relaxing §7's "length == token count"
+for this family.) One inversion: RATFOR was a *writing* tool (author
 rationally, compile down, never read the output); ours is a *reading*
 projection (ingest any surface, view it rationally) — and because the tape is
 lossless, the arrow runs both ways. The per-language lexical table (§2) is
