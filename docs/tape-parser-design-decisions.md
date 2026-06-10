@@ -415,3 +415,33 @@ align to the real structural ones, and validate rather than assume. The whole
 identity in one line: **git markers are a flat tape cut on the line grid; ours is
 the same idea cut on the structural grid — a structure-aware merge re-seams the
 conflict tape along the structural one.**
+
+### 13d. Subforest diff — the breadth-first delta
+
+> **Spiked** — `sfdiff.js` + `demos/demo-sfdiff.js` + the
+> `samples/sfdiff-old.js` / `-new.js` pair.
+
+The endpoint counterpart of 13c: compare two *versions* of a file as a forest of
+whole top-level units, never as line deltas. Segment each version's top level
+into units (named declarations + the loose top-level code), **match units by
+name across versions** (the breadth-first move — one level, identity first),
+compare each pair by a **content fingerprint over significant tokens**, and
+descend only into a modified unit — one step, to its first differing token.
+
+Because whitespace and comments are separate kinds on the value tape (13b), they
+simply don't participate in the fingerprint. Consequences, all deliberate:
+
+| change | line diff says | subforest diff says |
+|---|---|---|
+| reindent / reformat a unit | a wall of changed lines | **unchanged** |
+| add/edit comments | changed lines | **unchanged** |
+| move a unit within the file | remove-block + add-block | **moved** (content identical) |
+| edit one token | changed line(s) | **modified**, first differing token pointed at in both versions |
+
+Moved detection is an LCS over the common-name order (names that fell out of the
+longest common subsequence moved). Exit 0 = structurally identical — which makes
+`sfdiff` usable as a *reformat-safety check*: prove a formatting pass changed
+nothing. Same honest segmentation scope as 13a (top-level `function`/`class`;
+const/arrow forms pool into the loose unit). This is the worktree-vs-diff
+conversation made into a tool: endpoints compared breadth-first on the
+structural grid, the DAG never materialised.

@@ -605,6 +605,39 @@ class LexicalScanner {
       return rows;
     }
 
+    // Folded outline — the breadth-first viewer. Show only tokens at depth
+    // < maxDepth; a MATCHED opener sitting at the fold boundary collapses its
+    // whole span to one line (`{ … 12 … }`) via its jump pointer, O(1) per fold.
+    // Raise maxDepth to peel one more layer. Unmatched openers are NOT folded —
+    // we never guess a missing end — they print open with a trailing `…?`.
+    function toOutline(maxDepth = 1) {
+      const out = [];
+      let i = 0;
+      while (i < len) {
+        const d = depths[i];
+        if (d >= maxDepth) { i++; continue; }   // beyond the fold (under an unmatched opener)
+        const tag = tags[i];
+        const nm = nameOf(i);
+        const label = String.fromCharCode(tag) + (nm ? nm : '');
+        const indent = '  '.repeat(d);
+        const isOpener = (tag < 128 && IS_OPEN[tag]) || tag === X_OPEN || tag === P_IF;
+        const j = jumps[i];
+        if (isOpener && d === maxDepth - 1) {
+          if (j !== -1 && j !== i) {
+            const inner = j - i - 1;
+            const close = String.fromCharCode(tags[j]);
+            out.push(inner === 0 ? `${indent}${label}${close}` : `${indent}${label} … ${inner} … ${close}`);
+            i = j + 1;
+            continue;
+          }
+          if (j === -1) { out.push(`${indent}${label} …?`); i++; continue; }   // unmatched — no fold
+        }
+        out.push(indent + label);
+        i++;
+      }
+      return out.join('\n');
+    }
+
     function dumpColumns({ showContext = false } = {}) {
       const rows = [];
       for (let i = 0; i < len; i++) {
@@ -678,7 +711,7 @@ class LexicalScanner {
     return {
       length: len, tags, offsets, jumps, depths, names, src, internNames,
       unterminated, nameOf,
-      toPrintable, toPrintableIndented, outline, dumpColumns,
+      toPrintable, toPrintableIndented, outline, toOutline, dumpColumns,
       repairMap, seams, selfContained,
     };
   }
