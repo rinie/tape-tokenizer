@@ -534,6 +534,20 @@ restored on reconstruction. Free bonus: `toPrintable()` of XML is the same
 ghost-source skeleton as code — `<title>text</title>` reads `{>T}>`. This is
 the first bite of the lexical-scanner migration (13e).
 
+**The name for this is the RATFOR principle** (owner's framing — Kernighan &
+Plauger, *Software Tools*, 1976). RATFOR's stance: FORTRAN's surface syntax is
+not a reasonable medium for *seeing* structure, so give the structure one
+rational surface (`{}` blocks, free form) and treat the underlying syntax as a
+compilation detail. The mnemonic projection is the same move generalised:
+**prefer the rational representation; don't follow the surface syntax too
+deep.** `{` is what an open *is* — whether the underlying "FORTRAN" spells it
+`{`, `<book>`, or `#if`. One inversion: RATFOR was a *writing* tool (author
+rationally, compile down, never read the output); ours is a *reading*
+projection (ingest any surface, view it rationally) — and because the tape is
+lossless, the arrow runs both ways. The per-language lexical table (§2) is
+exactly the "FORTRAN backend" of this scheme: the only place surface syntax is
+allowed to matter.
+
 **Brief whitespace notation** — report the common cases briefly, surface only
 the deviations. The file's **indent unit** (tabs, or the most common
 space-step) is detected once and declared in the header; then:
