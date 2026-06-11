@@ -8,9 +8,104 @@ what was learned, including the wrong turns, in the spirit of the design's own
 The arc: a flat **value-token tape** (PR #1, pre-project) grew into a tolerant,
 positional **structural scanner** (#2–#10), with the design philosophy
 (Postel's Law + Chesterton's Fence) crystallising along the way; then the
-housekeeping wave (#11–#14: layout, line endings, surface conventions) and the
+housekeeping wave (#11–#14: layout, line endings, surface conventions), the
 **breadth-first projections** built on it (#15–#18: tape views, the §13 spikes,
-the subforest diff).
+the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
+lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
+direct bytes for closed vocabularies, indirection only for real variation).
+
+## PR #25 — Operator/literal encoding arc · 2026-06-11
+
+Six commits, three owner decisions, one rule at the end:
+
+- **Ghost renders operators in full** (`I && I`, not `I & I`) — the projection
+  may be wider than one char per token (the cpp-digraph precedent).
+- **Every operator gets its OWN byte**: single-char ops their literal ASCII;
+  the 33 multi-char JS ops a contiguous `0x80–0xA0` block (`OPS` map), decoded
+  by `OP_LITERAL`. Free printables were rejected: ~22 free vs 33 ops, and a
+  reused printable (`$` meaning `&&`) is a *false* mnemonic — worse than an
+  opaque byte the table decodes. Bonus correctness: longest-match per operator
+  (`a=+b` is `=` then `+`, not one bogus `=+` run).
+- **Strings and templates carry their own delimiter byte**: `"` 0x22, `'` 0x27
+  (also positioned for C char literals), backtick 0x60 for templates. `S` and
+  `X` returned to the free letters; regex keeps `R` (`/` is division's).
+- **The encoding rule, named** (design §13e): *indirection only for real
+  variation, not for a lack of letters — a byte is enough for a programming
+  language.* Closed vocabularies (keywords, operators, punctuation, brackets)
+  get direct lexeme↔byte maps; open vocabularies (idents, strings, numbers,
+  comments, text, ws) carry identity in the pool index. JS spends ~108 of 222
+  usable bytes.
+
+## PR #24 — Operators: first-char tag bytes · 2026-06-11  ⚠ superseded same day
+
+- First step toward direct operator encoding: tag byte = the operator's first
+  char (`&&` → `&`), pool carries the lexeme. To free `^`/`~`, two keyword
+  reassignments: catch `^`→`H` (catcH, pairing with `h` = throw), false
+  `~`→`u` (untrue).
+- **Superseded within hours** by #25's per-operator bytes — the family-byte
+  scheme answered "which family" but the owner wanted "which operator" from
+  the byte alone. The keyword reassignments survived; the first-char rule
+  did not. Recorded as the stepping stone it was.
+
+## PR #23 — cpp digraphs + XML `>` absorption · 2026-06-10
+
+- **RATFOR refinement: preserve the role, mark the family — never overload.**
+  C's `#if` is bracket-role but not a brace: it renders as family-marked
+  digraphs, the `#` bookending each block on the outside — `#{` opens, `}#`
+  closes, and `#else`/`#elif` render as `}# #{` (a branch marker IS a
+  close+open pair; each segment reads balanced by eye). Replaced the earlier
+  ternary mnemonics `?:;`. Tag bytes stay single; digraphs live in the
+  projection layer.
+- **XML: the `>` belongs to the tag.** `<catalog>` is one tape token (the
+  closing separator absorbed); `<br/>` one `/` token; only attribute-bearing
+  tags keep a separator token (`>` elided from the signal view). Tag tokens
+  reconstruct from source spans (§13b's offset+length option).
+
+## PR #22 — defuse on unilexer; tdump views; XML mode · 2026-06-10
+
+- **defuse.js migrated** to the unified tape (semantically identical;
+  tokenizer.js is now demo-only). **§13f answered**: whitespace association is
+  derivable by adjacency — a projection, never a tape column.
+- **tdump.js**: three views over one tape — `--full` (lossless, revertible),
+  `--brief` (quiet whitespace), `--signal` (no trivia). Brief whitespace
+  notation: indent unit detected once; `' '` and `\n` quiet; level changes as
+  sign-first deltas `+\n` / `-\n` (revised mid-PR from `\n+1` on owner
+  feedback — the sign leads so changes jump out at the first glyph).
+- ⚠ **Found mid-PR**: tdump had been running the **JS lexer over XML** (the
+  owner's screenshot showed `<?` as an op token). Fixed by giving unilexer a
+  real **XML mode**: open/close tags as `{`/`}` with the interned NAME as
+  value (open and close share a pool slot — the O(1) name match visible),
+  text `T`, declarations `!`. Bare dump values (the class column already
+  implies the kind; quotes were noise).
+- The **RATFOR principle** named and recorded: prefer the rational
+  representation; don't follow the surface syntax too deep. The lexical table
+  is the "FORTRAN backend" — the only place surface syntax may matter.
+
+## PR #21 — Sync discipline: warn about open PRs · 2026-06-10
+
+- New standing rule in §11: before starting a new slice, check
+  `gh pr list --state open` and warn the owner — no silent stacking over an
+  unmerged PR (the #5/#6 lesson, made procedure).
+
+## PR #20 — Lexer consolidation: unilexer.js · 2026-06-10
+
+- The repo had grown **three lexers** (tokenizer.js, lexical-scanner.js,
+  valuetape.js), each with its own string/comment/regex classification.
+  `unilexer.js` is the consolidation: one scan pass, one uniform tape carrying
+  both layers — value pools (§13b: lossless, dedup by uniqueness, occurrence
+  offsets) and structural links + depth.
+- **The encoding decision**: the token-tags mnemonic byte IS the tape's tag
+  byte, not a debug label; the coarse class is derived from it via a 256-entry
+  lookup. `toPrintable()` becomes *ghost source*: `function add(a, b) {` →
+  `f I(I, I) {`.
+- Consolidation proven by migrating **sfdiff.js** with byte-identical output.
+  valuetape.js marked historical; lexical-scanner.js (seams, cpp/XML families,
+  harvested tables) the remaining target.
+
+## PR #19 — Changelog catch-up #12–#18 · 2026-06-10
+
+- This file brought up to date (it had stopped at #11); the stale `Unreleased`
+  header dated, the CRLF footnote closed by #12 noted.
 
 ## PR #18 — Breadth-first views: folding outline + subforest diff · 2026-06-10
 
