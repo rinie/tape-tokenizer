@@ -65,7 +65,7 @@ function zipLines(source, tape) {
   for (let t = 0; t < tape.length; t++) {
     const off = tape.offsetOf(t);
     while (lineNo + 1 < starts.length && off >= starts[lineNo + 1]) { lineNo++; lineStart = starts[lineNo]; }
-    const ch = tape.charOf(t);
+    const ch = tape.mnemonicOf(t);
     if (ch !== ' ') perLine[lineNo] += ch;
     else if (perLine[lineNo] && !perLine[lineNo].endsWith(' ')) perLine[lineNo] += ' ';
   }

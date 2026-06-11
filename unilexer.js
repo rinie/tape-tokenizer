@@ -490,12 +490,20 @@ class UniLexer {
       return lexemeOf(t);
     };
 
-    // One mnemonic char per token — keywords whisper, literals shout, brackets
-    // are literal, whitespace breathes. Ghost source. (In XML mode, open/close
-    // tags project as `{` / `}` — the structural role, not the surface syntax.)
+    // The printable mnemonic of one token. Usually the tag byte's char;
+    // OPERATORS render their full pooled lexeme ('&&', '>=', '++') — the tag
+    // byte is the family, the lexeme is the exact operator, and ops are short
+    // enough to show whole (the cpp-digraph precedent: the projection may be
+    // wider than one char per token).
+    const mnemonicOf = (t) => (classTable[tagArr[t]] === KLASS.OP ? lexemeOf(t) : String.fromCharCode(tagArr[t]));
+
+    // One mnemonic per token — keywords whisper, literals shout, brackets are
+    // literal, operators show themselves, whitespace breathes. Ghost source.
+    // (In XML mode, open/close tags project as `{` / `}` — the structural
+    // role, not the surface syntax.)
     function toPrintable() {
       let out = '';
-      for (let t = 0; t < n; t++) out += String.fromCharCode(tagArr[t]);
+      for (let t = 0; t < n; t++) out += mnemonicOf(t);
       return out;
     }
 
@@ -554,7 +562,7 @@ class UniLexer {
     return {
       length: n, tagArr, poolArr, offArr, linkArr, depthArr, pools, src,
       KLASS, KLASS_NAME, INTERNED,
-      tagOf, charOf, classOf, lexemeOf, offsetOf, linkOf, depthOf, rawOf,
+      tagOf, charOf, classOf, lexemeOf, offsetOf, linkOf, depthOf, rawOf, mnemonicOf,
       toPrintable, reconstruct, dump, poolStats, occurrences, repairMap,
     };
   }
