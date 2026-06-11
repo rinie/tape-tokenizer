@@ -559,8 +559,16 @@ class UniLexer {
     function toPrintable() {
       let out = '';
       // TAG_NL renders as a REAL newline here: the ghost breaks lines where
-      // the source does (dumps use the escaped form via mnemonicOf).
-      for (let t = 0; t < n; t++) out += (tagArr[t] === TAG_NL ? '\n' : mnemonicOf(t));
+      // the source does (dumps use the escaped form via mnemonicOf). A
+      // multi-line comment DISPLAYS AS THE WHITESPACE IT OCCUPIES — just its
+      // line breaks — so the ghost stays line-aligned with the source
+      // (C(n) is the dump form, not the ghost form).
+      for (let t = 0; t < n; t++) {
+        const b = tagArr[t];
+        if (b === TAG_NL) out += '\n';
+        else if (b === TAG_COMMENT_ML) out += '\n'.repeat((lexemeOf(t).match(/\n/g) || []).length);
+        else out += mnemonicOf(t);
+      }
       return out;
     }
 
