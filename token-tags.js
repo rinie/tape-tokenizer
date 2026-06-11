@@ -2,8 +2,11 @@
 //
 // Tag byte encoding rules:
 //   Punctuation  — exact ASCII value of the character itself
-//   Literals     — UPPERCASE initial (I N D R X); STRING is its own quote '"'
-//                  (literal-ASCII, like punctuation — a quote says "string here")
+//   Literals     — UPPERCASE initial (I N D R); strings and templates carry
+//                  their own delimiter ('"' 0x22, "'" 0x27, backtick 0x60 —
+//                  literal-ASCII, like punctuation). 0x27 also serves languages
+//                  that prefer ' over " and C char literals. REGEX keeps 'R'
+//                  ('/' belongs to division).
 //   Keywords     — every keyword gets a printable A-Za-z mnemonic char
 //   EOF          — 0x00 (NUL, never valid in source)
 //
@@ -17,8 +20,9 @@
 //   0x4E 'N'    = NUMBER (integer)
 //   0x44 'D'    = DOUBLE (float)
 //   0x52 'R'    = REGEX
-//   0x22 '"'    = STRING (its own quote — literal-ASCII)
-//   0x58 'X'    = TEMPLATE (eXpression string)
+//   0x22 '"'    = STRING, double-quoted (its own quote — literal-ASCII)
+//   0x27 '''    = STRING, single-quoted / char literal (its own quote)
+//   0x60 '`'    = TEMPLATE (its own delimiter)
 //   0x48 'H'    = catch  (catcH — pairs with 'h' = throw: the throw/catch arc
 //                 as a case pair)
 //   0x75 'u'    = false  (untrue)
@@ -28,8 +32,8 @@
 // operator token's tag byte is the operator's own first char (+ - * & | ^ ~ …),
 // same rule as punctuation.
 //
-// Free A-Za-z after all assignments: Q S  (uppercase; S freed when STRING
-// moved to '"')
+// Free A-Za-z after all assignments: Q S X  (uppercase; S and X freed when
+// STRING/TEMPLATE moved to their own delimiters)
 //                                    b g m p q z  (lowercase)
 // → reserved for TypeScript keywords
 
@@ -57,8 +61,9 @@ export const T = {
   NUMBER:        0x4E,  // N  — integer Number (payload = source offset)
   DOUBLE:        0x44,  // D  — Double / float (payload = source offset)
   REGEX:         0x52,  // R  — Regex  (payload = source offset)
-  STRING:        0x22,  // "  — String, tagged with its own quote (payload = string buffer index)
-  TEMPLATE:      0x58,  // X  — eXpression string / template literal
+  STRING:        0x22,  // "  — double-quoted String (payload = string buffer index)
+  STRING_SQ:     0x27,  // '  — single-quoted string / char literal (languages that prefer ')
+  TEMPLATE:      0x60,  // `  — template literal, tagged with its own delimiter
 
   // ── keywords tier 1 — best available printable char ──────────────────────
   //
@@ -77,7 +82,7 @@ export const T = {
   //  'u' = false     untrue; was '~', freed for exact-ASCII operators
   //  'y' = typeof    tYpeof — 'y' free since yield demoted to tier-2
   //  'h' = throw     tHrow
-  //  'x' = extends   eXtends — 'X'=TEMPLATE but lowercase x is free
+  //  'x' = extends   eXtends
 
   KW_IF:         0x69,  // i  ★★★  most frequent keyword overall
   KW_CONST:      0x63,  // c  ★★★  most-used C keyword

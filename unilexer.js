@@ -17,7 +17,8 @@
 //   brackets/punct   their literal ASCII        ( ) { } [ ] ; , . :
 //   keywords         lowercase mnemonics whisper f=function r=return i=if …
 //   literals         UPPERCASE initials shout    I=IDENT N=NUMBER D=DOUBLE
-//                                                S=STRING X=TEMPLATE R=REGEX
+//                                                R=REGEX ('/' is division's);
+//                    strings/templates carry their own delimiter: " ' `
 //   operators        their own byte: single-char ops their literal ASCII,
 //                    multi-char ops a 0x80+ block (OPS in token-tags;
 //                    OP_LITERAL decodes byte → text — '&&' is 0x89)
@@ -51,7 +52,8 @@ const TAG_COMMENT = 0x23;     // '#'
 const TAG_CLASS = new Uint8Array(256).fill(KLASS.PUNCT);
 TAG_CLASS[TAG_WS] = KLASS.WS;
 TAG_CLASS[TAG_COMMENT] = KLASS.COMMENT;
-TAG_CLASS[T.STRING] = KLASS.STRING;       // S
+TAG_CLASS[T.STRING] = KLASS.STRING;       // "  double-quoted
+TAG_CLASS[T.STRING_SQ] = KLASS.STRING;    // '  single-quoted
 TAG_CLASS[T.TEMPLATE] = KLASS.TEMPLATE;   // X
 TAG_CLASS[T.REGEX] = KLASS.REGEX;         // R
 TAG_CLASS[T.NUMBER] = KLASS.NUMBER;       // N
@@ -89,7 +91,8 @@ TAG_CLASS_XML[0x7B] = KLASS.TAG;                // {  open tag
 TAG_CLASS_XML[0x7D] = KLASS.TAG;                // }  close tag
 TAG_CLASS_XML[0x2F] = KLASS.TAG;                // /  complete self-closing tag
 TAG_CLASS_XML[0x54] = KLASS.TEXT;               // T  text content
-TAG_CLASS_XML[T.STRING] = KLASS.STRING;         // S  attribute values
+TAG_CLASS_XML[T.STRING] = KLASS.STRING;         // "  attribute values
+TAG_CLASS_XML[T.STRING_SQ] = KLASS.STRING;      // '  attribute values
 TAG_CLASS_XML[T.IDENT] = KLASS.IDENT;           // I  attribute names
 TAG_CLASS_XML[T.OP] = KLASS.OP;                 // =
 
@@ -176,7 +179,7 @@ class UniLexer {
         let j = i + 2; while (j < len && !(src.charCodeAt(j - 1) === 0x2A && src.charCodeAt(j) === 0x2F)) j++;
         end = Math.min(j + 1, len); tag = TAG_COMMENT;
       } else if (c === 0x22 || c === 0x27) {                                 // " '
-        end = this._str(src, i, c); tag = T.STRING;
+        end = this._str(src, i, c); tag = c;   // tagged with its own quote
       } else if (c === 0x60) {                                               // `
         end = this._tmpl(src, i); tag = T.TEMPLATE;
       } else if (c === 0x2F && !prevValue && (end = this._regex(src, i)) !== -1) {
@@ -394,7 +397,7 @@ class UniLexer {
       if (c === 0x22 || c === 0x27) {                                // attr value
         let j = i + 1; while (j < len && src.charCodeAt(j) !== c) j++;
         j = Math.min(j + 1, len);
-        emit(T.STRING, KLASS.STRING, src.slice(start, j), start, depth);
+        emit(c, KLASS.STRING, src.slice(start, j), start, depth);   // its own quote
         i = j; continue;
       }
       if (c === 0x3E) {                                              // '>'
