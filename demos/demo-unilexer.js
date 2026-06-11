@@ -19,7 +19,7 @@ const u = new UniLexer().tokenize(src);
 
 console.log('═══ the mnemonic projection (one tag byte per token) ═════════════');
 console.log('source, then its ghost — keywords whisper (f,c,r,i), literals shout');
-console.log('(I,N,D,S,X,R), brackets are literal, ops are their own char, whitespace breathes:\n');
+console.log('(I,N,D,X,R; a string is its own quote \"), ops show themselves:\n');
 for (const [line, ghost] of zipLines(src, u)) {
   console.log('  src   │ ' + line);
   console.log('  ghost │ ' + ghost);
@@ -65,7 +65,7 @@ function zipLines(source, tape) {
   for (let t = 0; t < tape.length; t++) {
     const off = tape.offsetOf(t);
     while (lineNo + 1 < starts.length && off >= starts[lineNo + 1]) { lineNo++; lineStart = starts[lineNo]; }
-    const ch = tape.charOf(t);
+    const ch = tape.mnemonicOf(t);
     if (ch !== ' ') perLine[lineNo] += ch;
     else if (perLine[lineNo] && !perLine[lineNo].endsWith(' ')) perLine[lineNo] += ' ';
   }

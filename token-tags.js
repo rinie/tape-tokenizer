@@ -2,7 +2,11 @@
 //
 // Tag byte encoding rules:
 //   Punctuation  — exact ASCII value of the character itself
-//   Literals     — UPPERCASE initial  (I N D R S X)
+//   Literals     — UPPERCASE initial (I N D R); strings and templates carry
+//                  their own delimiter ('"' 0x22, "'" 0x27, backtick 0x60 —
+//                  literal-ASCII, like punctuation). 0x27 also serves languages
+//                  that prefer ' over " and C char literals. REGEX keeps 'R'
+//                  ('/' belongs to division).
 //   Keywords     — every keyword gets a printable A-Za-z mnemonic char
 //   EOF          — 0x00 (NUL, never valid in source)
 //
@@ -16,8 +20,9 @@
 //   0x4E 'N'    = NUMBER (integer)
 //   0x44 'D'    = DOUBLE (float)
 //   0x52 'R'    = REGEX
-//   0x53 'S'    = STRING
-//   0x58 'X'    = TEMPLATE (eXpression string)
+//   0x22 '"'    = STRING, double-quoted (its own quote — literal-ASCII)
+//   0x27 '''    = STRING, single-quoted / char literal (its own quote)
+//   0x60 '`'    = TEMPLATE (its own delimiter)
 //   0x48 'H'    = catch  (catcH — pairs with 'h' = throw: the throw/catch arc
 //                 as a case pair)
 //   0x75 'u'    = false  (untrue)
@@ -27,7 +32,8 @@
 // operator token's tag byte is the operator's own first char (+ - * & | ^ ~ …),
 // same rule as punctuation.
 //
-// Free A-Za-z after all assignments: Q  (uppercase)
+// Free A-Za-z after all assignments: Q S X  (uppercase; S and X freed when
+// STRING/TEMPLATE moved to their own delimiters)
 //                                    b g m p q z  (lowercase)
 // → reserved for TypeScript keywords
 
@@ -55,8 +61,9 @@ export const T = {
   NUMBER:        0x4E,  // N  — integer Number (payload = source offset)
   DOUBLE:        0x44,  // D  — Double / float (payload = source offset)
   REGEX:         0x52,  // R  — Regex  (payload = source offset)
-  STRING:        0x53,  // S  — String (payload = string buffer index)
-  TEMPLATE:      0x58,  // X  — eXpression string / template literal
+  STRING:        0x22,  // "  — double-quoted String (payload = string buffer index)
+  STRING_SQ:     0x27,  // '  — single-quoted string / char literal (languages that prefer ')
+  TEMPLATE:      0x60,  // `  — template literal, tagged with its own delimiter
 
   // ── keywords tier 1 — best available printable char ──────────────────────
   //
@@ -65,7 +72,7 @@ export const T = {
   //  'I' = IDENT already used as literal tag
   //  'n' = new       wins over null    ('N' = NUMBER literal)
   //  'r' = return    only R keyword    ('R' = REGEX literal)
-  //  's' = super     ('S' = STRING literal; super > switch in class-heavy code)
+  //  's' = super     (super > switch in class-heavy code)
   //  't' = this      wins decisively   (most-used T keyword)
   //  'T' = true      second T keyword, both common enough for single chars
   //  'M' = import    iMport — 'i'=if, 'I'=IDENT, so M (middle letter) used
@@ -75,7 +82,7 @@ export const T = {
   //  'u' = false     untrue; was '~', freed for exact-ASCII operators
   //  'y' = typeof    tYpeof — 'y' free since yield demoted to tier-2
   //  'h' = throw     tHrow
-  //  'x' = extends   eXtends — 'X'=TEMPLATE but lowercase x is free
+  //  'x' = extends   eXtends
 
   KW_IF:         0x69,  // i  ★★★  most frequent keyword overall
   KW_CONST:      0x63,  // c  ★★★  most-used C keyword
@@ -92,7 +99,7 @@ export const T = {
   KW_IMPORT:     0x4D,  // M  ★★★  iMport — only M-initial in keyword set
   KW_EXPORT:     0x45,  // E  ★★★
   KW_ELSE:       0x65,  // e  ★★★  both export & else very common, each gets a char
-  KW_SUPER:      0x73,  // s  ★★   ('S' = STRING literal)
+  KW_SUPER:      0x73,  // s  ★★
   KW_EXTENDS:    0x78,  // x  ★★   eXtends
   KW_TYPEOF:     0x79,  // y  ★★   tYpeof
   KW_THROW:      0x68,  // h  ★★   tHrow
@@ -120,6 +127,37 @@ export const T = {
   KW_IN:         0x6A,  // j  (best available)
   KW_CONTINUE:   0x6B,  // k  kontinue
 };
+
+// ── operators — every operator gets its OWN single tag byte ─────────────────
+// Single-char operators use their literal ASCII (the punctuation rule).
+// Multi-char operators get a contiguous high-range block, grouped by family.
+// Why 0x80+ and not the free printables: ~33 multi-char operators vs ~22 free
+// printable bytes, and an arbitrary printable ('$' meaning '&&') would be a
+// FALSE mnemonic in a hex dump — worse than an opaque byte. No control chars;
+// 0x80–0xFE per the encoding rules. OP_LITERAL is the decoder (byte → text).
+export const OPS = new Map([
+  // equality / relational
+  ['==',   0x80], ['===',  0x81], ['!=',   0x82], ['!==',  0x83],
+  ['<=',   0x84], ['>=',   0x85],
+  // shifts
+  ['<<',   0x86], ['>>',   0x87], ['>>>',  0x88],
+  // logical / nullish / chaining
+  ['&&',   0x89], ['||',   0x8A], ['??',   0x8B], ['?.',   0x8C],
+  // arrow, inc/dec, exponent
+  ['=>',   0x8D], ['++',   0x8E], ['--',   0x8F], ['**',   0x90],
+  // compound assignment
+  ['+=',   0x91], ['-=',   0x92], ['*=',   0x93], ['/=',   0x94],
+  ['%=',   0x95], ['**=',  0x96], ['<<=',  0x97], ['>>=',  0x98],
+  ['>>>=', 0x99], ['&=',   0x9A], ['|=',   0x9B], ['^=',   0x9C],
+  ['&&=',  0x9D], ['||=',  0x9E], ['??=',  0x9F],
+  // spread
+  ['...',  0xA0],
+]);
+
+// tag byte → the operator's literal text (single-char ops decode to themselves)
+export const OP_LITERAL = {};
+for (const ch of '!%&*+-/<=>?@^|~') OP_LITERAL[ch.charCodeAt(0)] = ch;
+for (const [lit, byte] of OPS) OP_LITERAL[byte] = lit;
 
 // Reverse map — tag byte → constant name (for debug dumps)
 export const TAG_NAME = Object.fromEntries(

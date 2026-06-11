@@ -17,9 +17,11 @@
 //   brackets/punct   their literal ASCII        ( ) { } [ ] ; , . :
 //   keywords         lowercase mnemonics whisper f=function r=return i=if …
 //   literals         UPPERCASE initials shout    I=IDENT N=NUMBER D=DOUBLE
-//                                                S=STRING X=TEMPLATE R=REGEX
-//   operators        their own first char       + - * / & | ^ ~ < > ! % ? @
-//                    ('&&' is tag '&'; the pool has the full lexeme)
+//                                                R=REGEX ('/' is division's);
+//                    strings/templates carry their own delimiter: " ' `
+//   operators        their own byte: single-char ops their literal ASCII,
+//                    multi-char ops a 0x80+ block (OPS in token-tags;
+//                    OP_LITERAL decodes byte → text — '&&' is 0x89)
 //   comments         '#'                         (same char XML mode uses)
 //   whitespace       ' '  — so toPrintable() reads like ghost source
 //
@@ -31,7 +33,7 @@
 // tokenizer.js (defuse) and lexical-scanner.js (scan/validate — seams, cpp,
 // XML, multi-language tables) are migration targets, not yet migrated.
 
-import { T, KEYWORDS } from './token-tags.js';
+import { T, KEYWORDS, OPS } from './token-tags.js';
 
 // ── classes (coarse, derived from the tag byte) ──────────────────────────────
 const KLASS = {
@@ -50,18 +52,20 @@ const TAG_COMMENT = 0x23;     // '#'
 const TAG_CLASS = new Uint8Array(256).fill(KLASS.PUNCT);
 TAG_CLASS[TAG_WS] = KLASS.WS;
 TAG_CLASS[TAG_COMMENT] = KLASS.COMMENT;
-TAG_CLASS[T.STRING] = KLASS.STRING;       // S
+TAG_CLASS[T.STRING] = KLASS.STRING;       // "  double-quoted
+TAG_CLASS[T.STRING_SQ] = KLASS.STRING;    // '  single-quoted
 TAG_CLASS[T.TEMPLATE] = KLASS.TEMPLATE;   // X
 TAG_CLASS[T.REGEX] = KLASS.REGEX;         // R
 TAG_CLASS[T.NUMBER] = KLASS.NUMBER;       // N
 TAG_CLASS[T.DOUBLE] = KLASS.NUMBER;       // D
 TAG_CLASS[T.IDENT] = KLASS.IDENT;         // I
 for (const byte of KEYWORDS.values()) TAG_CLASS[byte] = KLASS.KEYWORD;
-// Operators are directly encoded — the tag byte is the operator's own first
-// char, same exact-ASCII rule as punctuation. The pool carries the full
-// lexeme, so `&&` is tag '&' with value "&&". (token-tags freed '^' and '~'
-// for this: catch → 'H', false → 'u'.)
+// Operators are directly encoded — every operator has its OWN tag byte.
+// Single-char ops use their literal ASCII (token-tags freed '^' and '~' for
+// this: catch → 'H', false → 'u'); multi-char ops use the 0x80+ block from
+// the OPS table, decoded back to text by OP_LITERAL.
 for (const ch of '!%&*+-/<=>?@^|~') TAG_CLASS[ch.charCodeAt(0)] = KLASS.OP;
+for (const byte of OPS.values()) TAG_CLASS[byte] = KLASS.OP;   // multi-char ops, 0x80+
 for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]) {
   TAG_CLASS[b] = KLASS.BRACKET;
 }
@@ -87,7 +91,8 @@ TAG_CLASS_XML[0x7B] = KLASS.TAG;                // {  open tag
 TAG_CLASS_XML[0x7D] = KLASS.TAG;                // }  close tag
 TAG_CLASS_XML[0x2F] = KLASS.TAG;                // /  complete self-closing tag
 TAG_CLASS_XML[0x54] = KLASS.TEXT;               // T  text content
-TAG_CLASS_XML[T.STRING] = KLASS.STRING;         // S  attribute values
+TAG_CLASS_XML[T.STRING] = KLASS.STRING;         // "  attribute values
+TAG_CLASS_XML[T.STRING_SQ] = KLASS.STRING;      // '  attribute values
 TAG_CLASS_XML[T.IDENT] = KLASS.IDENT;           // I  attribute names
 TAG_CLASS_XML[T.OP] = KLASS.OP;                 // =
 
@@ -174,7 +179,7 @@ class UniLexer {
         let j = i + 2; while (j < len && !(src.charCodeAt(j - 1) === 0x2A && src.charCodeAt(j) === 0x2F)) j++;
         end = Math.min(j + 1, len); tag = TAG_COMMENT;
       } else if (c === 0x22 || c === 0x27) {                                 // " '
-        end = this._str(src, i, c); tag = T.STRING;
+        end = this._str(src, i, c); tag = c;   // tagged with its own quote
       } else if (c === 0x60) {                                               // `
         end = this._tmpl(src, i); tag = T.TEMPLATE;
       } else if (c === 0x2F && !prevValue && (end = this._regex(src, i)) !== -1) {
@@ -193,13 +198,18 @@ class UniLexer {
       } else if (c === 0x3B || c === 0x2C || c === 0x3A) {                   // ; , :
         end = i + 1; tag = c;
       } else if (c === 0x2E) {                                               // . (incl. ...)
-        if (src.charCodeAt(i + 1) === 0x2E && src.charCodeAt(i + 2) === 0x2E) { end = i + 3; tag = 0x2E; }
+        if (src.charCodeAt(i + 1) === 0x2E && src.charCodeAt(i + 2) === 0x2E) { end = i + 3; tag = OPS.get('...'); }
         else { end = i + 1; tag = T.DOT; }
       } else if (OP_CHARS.has(src[i])) {
-        // directly encoded: tag byte = the operator's own first char ('&&'
-        // is tag '&'); the pooled lexeme carries the full operator
-        let j = i + 1; while (j < len && OP_CHARS.has(src[j])) j++;
-        end = j; tag = c;
+        // every operator gets its OWN byte: longest match against the OPS
+        // table (maximal munch per OPERATOR, not per run — 'a=+b' is '=' then
+        // '+'). Multi-char ops take their 0x80+ byte; single chars their ASCII.
+        let oplen = 1;
+        for (const l of [4, 3, 2]) {
+          if (i + l <= len && OPS.has(src.slice(i, i + l))) { oplen = l; break; }
+        }
+        end = i + oplen;
+        tag = oplen === 1 ? c : OPS.get(src.slice(i, end));
       } else {
         end = i + 1; tag = c < 128 ? c : T.OP;   // bare ASCII punct keeps its own byte
       }
@@ -387,7 +397,7 @@ class UniLexer {
       if (c === 0x22 || c === 0x27) {                                // attr value
         let j = i + 1; while (j < len && src.charCodeAt(j) !== c) j++;
         j = Math.min(j + 1, len);
-        emit(T.STRING, KLASS.STRING, src.slice(start, j), start, depth);
+        emit(c, KLASS.STRING, src.slice(start, j), start, depth);   // its own quote
         i = j; continue;
       }
       if (c === 0x3E) {                                              // '>'
@@ -490,12 +500,20 @@ class UniLexer {
       return lexemeOf(t);
     };
 
-    // One mnemonic char per token — keywords whisper, literals shout, brackets
-    // are literal, whitespace breathes. Ghost source. (In XML mode, open/close
-    // tags project as `{` / `}` — the structural role, not the surface syntax.)
+    // The printable mnemonic of one token. Usually the tag byte's char;
+    // OPERATORS render their full pooled lexeme ('&&', '>=', '++') — the tag
+    // byte is the family, the lexeme is the exact operator, and ops are short
+    // enough to show whole (the cpp-digraph precedent: the projection may be
+    // wider than one char per token).
+    const mnemonicOf = (t) => (classTable[tagArr[t]] === KLASS.OP ? lexemeOf(t) : String.fromCharCode(tagArr[t]));
+
+    // One mnemonic per token — keywords whisper, literals shout, brackets are
+    // literal, operators show themselves, whitespace breathes. Ghost source.
+    // (In XML mode, open/close tags project as `{` / `}` — the structural
+    // role, not the surface syntax.)
     function toPrintable() {
       let out = '';
-      for (let t = 0; t < n; t++) out += String.fromCharCode(tagArr[t]);
+      for (let t = 0; t < n; t++) out += mnemonicOf(t);
       return out;
     }
 
@@ -513,7 +531,7 @@ class UniLexer {
       for (let t = 0; t < Math.min(n, limit); t++) {
         const lex = lexemeOf(t).replace(/\n/g, '↵').replace(/\t/g, '→');
         const link = linkArr[t] === -1 ? '' : ` →[${linkArr[t]}]`;
-        rows.push(`[${String(t).padStart(4)}] ${charOf(t)}  ${KLASS_NAME[classOf(t)].padEnd(8)} d=${depthArr[t]}${link.padEnd(8)} ${lex.length > 28 ? lex.slice(0, 28) + '…' : lex}`);
+        rows.push(`[${String(t).padStart(4)}] ${mnemonicOf(t).padEnd(4)} ${KLASS_NAME[classOf(t)].padEnd(8)} d=${depthArr[t]}${link.padEnd(8)} ${lex.length > 28 ? lex.slice(0, 28) + '…' : lex}`);
       }
       return rows.join('\n');
     }
@@ -554,7 +572,7 @@ class UniLexer {
     return {
       length: n, tagArr, poolArr, offArr, linkArr, depthArr, pools, src,
       KLASS, KLASS_NAME, INTERNED,
-      tagOf, charOf, classOf, lexemeOf, offsetOf, linkOf, depthOf, rawOf,
+      tagOf, charOf, classOf, lexemeOf, offsetOf, linkOf, depthOf, rawOf, mnemonicOf,
       toPrintable, reconstruct, dump, poolStats, occurrences, repairMap,
     };
   }
