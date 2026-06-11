@@ -97,36 +97,59 @@ function detectIndentUnit(src) {
   return { kind: 'space', width, label: `${width} spaces` };
 }
 
-// Render one ws lexeme in the brief notation. `state.units` carries the current
-// indent level (in units) across calls.
-function briefWs(lexeme, unit, state) {
-  const nl = (lexeme.match(/\n/g) || []).length;
-  if (nl === 0) {
-    if (/^ +$/.test(lexeme)) return lexeme.length === 1 ? "' '" : `' '(${lexeme.length})`;
-    if (/^\t+$/.test(lexeme)) return lexeme.length === 1 ? '\\t' : `\\t(${lexeme.length})`;
-    return JSON.stringify(lexeme);                      // mixed — explicit
-  }
-  const tail = lexeme.slice(lexeme.lastIndexOf('\n') + 1);   // the new line's indent
-  let units;
-  let offUnit = false;
+// Sign-first delta string ('' when unchanged)
+function deltaSign(delta) {
+  if (delta === 0) return '';
+  if (delta === 1) return '+';
+  if (delta === -1) return '-';
+  return `${delta > 0 ? '+' : ''}${delta}`;
+}
+
+// Indent width of an intra-line ws lexeme, in units; offUnit if not whole.
+function measureIndent(lexeme, unit) {
   if (unit.kind === 'tab') {
-    units = (tail.match(/\t/g) || []).length;
-    offUnit = /[^\t]/.test(tail);
-  } else {
-    const cols = tail.replace(/\t/g, ' '.repeat(4)).length;
-    units = Math.floor(cols / unit.width);
-    offUnit = cols % unit.width !== 0 || /\t/.test(tail);
+    return { units: (lexeme.match(/\t/g) || []).length, offUnit: /[^\t]/.test(lexeme) };
   }
-  // sign-first (diff convention): the level change leads, quiet \n stays bare
-  const delta = units - state.units;
-  let sign = '';
-  if (delta === 1) sign = '+';
-  else if (delta === -1) sign = '-';
-  else if (delta !== 0) sign = `${delta > 0 ? '+' : ''}${delta}`;
-  let out = sign + (nl === 1 ? '\\n' : `\\n(${nl})`);
-  if (offUnit && tail.length) out += ` ${JSON.stringify(tail)}`;   // deviation: show it
-  state.units = units;
-  return out;
+  const cols = lexeme.replace(/\t/g, ' '.repeat(4)).length;
+  return { units: Math.floor(cols / unit.width), offUnit: cols % unit.width !== 0 || /\t/.test(lexeme) };
+}
+
+// Render one ws token in the brief notation. Newlines are their OWN tokens
+// (TAG_NL, byte 0x10) since the newline-token change; the indent that follows
+// is a separate ws token, and the level delta renders on whichever token ends
+// the line transition:
+//   \n / \n(k)    the newline(s); carries the delta itself ONLY when the new
+//                 line has zero indent (no indent token follows)
+//   + / - / +2    the following indent token: level change, sign first
+//   =             the following indent token: level unchanged — quiet
+//   ' ' ' '(n)    mid-line spacing, as before
+// `state` carries {units, afterNl} across calls; `next` is the next token's
+// {isIntraWs} for the zero-indent case.
+function briefWs(lexeme, unit, state, isNl, nextIsIntraWs) {
+  if (isNl) {
+    const k = (lexeme.match(/\n/g) || []).length || lexeme.length;
+    let out = k === 1 ? '\\n' : `\\n(${k})`;
+    state.afterNl = true;
+    if (!nextIsIntraWs) {                       // zero-indent line: delta lands here
+      const sign = deltaSign(0 - state.units);
+      out = sign + out;
+      state.units = 0;
+      state.afterNl = false;
+    }
+    return out;
+  }
+  if (state.afterNl) {                          // this token IS the line's indent
+    state.afterNl = false;
+    const { units, offUnit } = measureIndent(lexeme, unit);
+    const sign = deltaSign(units - state.units);
+    state.units = units;
+    if (offUnit) return `${sign || '='} ${JSON.stringify(lexeme)}`;   // deviation: show it
+    return sign || '=';
+  }
+  // mid-line spacing
+  if (/^ +$/.test(lexeme)) return lexeme.length === 1 ? "' '" : `' '(${lexeme.length})`;
+  if (/^\t+$/.test(lexeme)) return lexeme.length === 1 ? '\\t' : `\\t(${lexeme.length})`;
+  return JSON.stringify(lexeme);                // mixed — explicit
 }
 
 // ── the dump itself — a projection over the unchanged tape ───────────────────
@@ -137,10 +160,10 @@ function briefWs(lexeme, unit, state) {
 function dumpTokens(src, mode = 'brief', lang = 'js') {
   const u = lang === 'xml' ? new UniLexer().tokenizeXml(src) : new UniLexer().tokenize(src);
   const unit = detectIndentUnit(src);
-  const state = { units: 0 };
+  const state = { units: 0, afterNl: true };   // file start counts as a line start
   const lines = [];
 
-  if (mode === 'brief') lines.push(`indent unit: ${unit.label}; +\\n/-\\n = level change in units (sign leads); quiet \\n when unchanged`);
+  if (mode === 'brief') lines.push(`indent unit: ${unit.label}; on the indent token: +1/-1 = level change (sign first), = unchanged; \\n is its own token`);
 
   for (let t = 0; t < u.length; t++) {
     const klass = u.classOf(t);
@@ -153,9 +176,13 @@ function dumpTokens(src, mode = 'brief', lang = 'js') {
 
     const lexeme = u.lexemeOf(t);
     let value;
+    if (klass !== KLASS.WS) state.afterNl = false;   // any non-ws token ends the line-start window
     if (mode === 'full') value = JSON.stringify(u.rawOf(t));               // exact, revertible
-    else if (klass === KLASS.WS) value = briefWs(lexeme, unit, state);
-    else if (klass === KLASS.COMMENT || klass === KLASS.TEXT || klass === KLASS.DECL) {
+    else if (klass === KLASS.WS) {
+      const isNl = u.tagOf(t) === 0x10;
+      const nextIsIntraWs = t + 1 < u.length && u.classOf(t + 1) === KLASS.WS && u.tagOf(t + 1) !== 0x10;
+      value = briefWs(lexeme, unit, state, isNl, nextIsIntraWs);
+    } else if (klass === KLASS.COMMENT || klass === KLASS.TEXT || klass === KLASS.DECL) {
       value = (lexeme.length > 40 ? lexeme.slice(0, 40) + '…' : lexeme).replace(/\n/g, '\\n');
     } else value = lexeme;                                                 // bare — class implies kind
 
