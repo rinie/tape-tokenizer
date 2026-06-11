@@ -2,7 +2,8 @@
 //
 // Tag byte encoding rules:
 //   Punctuation  — exact ASCII value of the character itself
-//   Literals     — UPPERCASE initial  (I N D R S X)
+//   Literals     — UPPERCASE initial (I N D R X); STRING is its own quote '"'
+//                  (literal-ASCII, like punctuation — a quote says "string here")
 //   Keywords     — every keyword gets a printable A-Za-z mnemonic char
 //   EOF          — 0x00 (NUL, never valid in source)
 //
@@ -16,7 +17,7 @@
 //   0x4E 'N'    = NUMBER (integer)
 //   0x44 'D'    = DOUBLE (float)
 //   0x52 'R'    = REGEX
-//   0x53 'S'    = STRING
+//   0x22 '"'    = STRING (its own quote — literal-ASCII)
 //   0x58 'X'    = TEMPLATE (eXpression string)
 //   0x48 'H'    = catch  (catcH — pairs with 'h' = throw: the throw/catch arc
 //                 as a case pair)
@@ -27,7 +28,8 @@
 // operator token's tag byte is the operator's own first char (+ - * & | ^ ~ …),
 // same rule as punctuation.
 //
-// Free A-Za-z after all assignments: Q  (uppercase)
+// Free A-Za-z after all assignments: Q S  (uppercase; S freed when STRING
+// moved to '"')
 //                                    b g m p q z  (lowercase)
 // → reserved for TypeScript keywords
 
@@ -55,7 +57,7 @@ export const T = {
   NUMBER:        0x4E,  // N  — integer Number (payload = source offset)
   DOUBLE:        0x44,  // D  — Double / float (payload = source offset)
   REGEX:         0x52,  // R  — Regex  (payload = source offset)
-  STRING:        0x53,  // S  — String (payload = string buffer index)
+  STRING:        0x22,  // "  — String, tagged with its own quote (payload = string buffer index)
   TEMPLATE:      0x58,  // X  — eXpression string / template literal
 
   // ── keywords tier 1 — best available printable char ──────────────────────
@@ -65,7 +67,7 @@ export const T = {
   //  'I' = IDENT already used as literal tag
   //  'n' = new       wins over null    ('N' = NUMBER literal)
   //  'r' = return    only R keyword    ('R' = REGEX literal)
-  //  's' = super     ('S' = STRING literal; super > switch in class-heavy code)
+  //  's' = super     (super > switch in class-heavy code)
   //  't' = this      wins decisively   (most-used T keyword)
   //  'T' = true      second T keyword, both common enough for single chars
   //  'M' = import    iMport — 'i'=if, 'I'=IDENT, so M (middle letter) used
@@ -92,7 +94,7 @@ export const T = {
   KW_IMPORT:     0x4D,  // M  ★★★  iMport — only M-initial in keyword set
   KW_EXPORT:     0x45,  // E  ★★★
   KW_ELSE:       0x65,  // e  ★★★  both export & else very common, each gets a char
-  KW_SUPER:      0x73,  // s  ★★   ('S' = STRING literal)
+  KW_SUPER:      0x73,  // s  ★★
   KW_EXTENDS:    0x78,  // x  ★★   eXtends
   KW_TYPEOF:     0x79,  // y  ★★   tYpeof
   KW_THROW:      0x68,  // h  ★★   tHrow

@@ -467,7 +467,8 @@ links and depth (tolerant, non-faulting).
 printable-ASCII scheme is promoted from debug labelling to the tape encoding
 itself. One byte per token: brackets/punct keep their literal ASCII, keywords
 get their lowercase mnemonics (`f`unction, `r`eturn, `i`f — they whisper),
-literals their UPPERCASE initials (`I N D S X R` — they shout), operators
+literals their UPPERCASE initials (`I N D X R` — they shout; STRING is its
+own quote `"`, literal-ASCII like the brackets), operators
 their own byte (single-char ops their literal ASCII — to free `^`/`~`, catch
 moved to `H` and false to `u`; the 33 multi-char ops a contiguous 0x80–0xA0
 block via the `OPS` table, decoded by `OP_LITERAL`), comments `#`, whitespace

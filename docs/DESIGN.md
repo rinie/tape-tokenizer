@@ -77,7 +77,7 @@ Currently unused — reserved for future annotations:
 | Keyword tag                  | Source byte offset                 |
 | `IDENT` (0x49)               | Intern pool ID                     |
 | `NUMBER` (0x4E), `DOUBLE` (0x44) | Source byte offset             |
-| `STRING` (0x53)              | Index into string side-buffer      |
+| `STRING` (0x22 `"`)          | Index into string side-buffer      |
 | `TEMPLATE` (0x58)            | Source byte offset                 |
 | `REGEX` (0x52)               | Source byte offset                 |
 | `LBRACE/LPAREN/LBRACKET`     | Tape index of matching closer      |
@@ -104,7 +104,7 @@ Uppercase frees the corresponding lowercase letter for a keyword:
 
 ```
 0x49 I  IDENT     0x4E N  NUMBER    0x44 D  DOUBLE
-0x52 R  REGEX     0x53 S  STRING    0x58 X  TEMPLATE (eXpression)
+0x52 R  REGEX     0x22 "  STRING    0x58 X  TEMPLATE (eXpression)
 ```
 
 ### Keywords — frequency-based assignment
