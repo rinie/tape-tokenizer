@@ -18,8 +18,9 @@
 //   keywords         lowercase mnemonics whisper f=function r=return i=if …
 //   literals         UPPERCASE initials shout    I=IDENT N=NUMBER D=DOUBLE
 //                                                S=STRING X=TEMPLATE R=REGEX
-//   operators        their own first char       + - * / & | ^ ~ < > ! % ? @
-//                    ('&&' is tag '&'; the pool has the full lexeme)
+//   operators        their own byte: single-char ops their literal ASCII,
+//                    multi-char ops a 0x80+ block (OPS in token-tags;
+//                    OP_LITERAL decodes byte → text — '&&' is 0x89)
 //   comments         '#'                         (same char XML mode uses)
 //   whitespace       ' '  — so toPrintable() reads like ghost source
 //
@@ -31,7 +32,7 @@
 // tokenizer.js (defuse) and lexical-scanner.js (scan/validate — seams, cpp,
 // XML, multi-language tables) are migration targets, not yet migrated.
 
-import { T, KEYWORDS } from './token-tags.js';
+import { T, KEYWORDS, OPS } from './token-tags.js';
 
 // ── classes (coarse, derived from the tag byte) ──────────────────────────────
 const KLASS = {
@@ -57,11 +58,12 @@ TAG_CLASS[T.NUMBER] = KLASS.NUMBER;       // N
 TAG_CLASS[T.DOUBLE] = KLASS.NUMBER;       // D
 TAG_CLASS[T.IDENT] = KLASS.IDENT;         // I
 for (const byte of KEYWORDS.values()) TAG_CLASS[byte] = KLASS.KEYWORD;
-// Operators are directly encoded — the tag byte is the operator's own first
-// char, same exact-ASCII rule as punctuation. The pool carries the full
-// lexeme, so `&&` is tag '&' with value "&&". (token-tags freed '^' and '~'
-// for this: catch → 'H', false → 'u'.)
+// Operators are directly encoded — every operator has its OWN tag byte.
+// Single-char ops use their literal ASCII (token-tags freed '^' and '~' for
+// this: catch → 'H', false → 'u'); multi-char ops use the 0x80+ block from
+// the OPS table, decoded back to text by OP_LITERAL.
 for (const ch of '!%&*+-/<=>?@^|~') TAG_CLASS[ch.charCodeAt(0)] = KLASS.OP;
+for (const byte of OPS.values()) TAG_CLASS[byte] = KLASS.OP;   // multi-char ops, 0x80+
 for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]) {
   TAG_CLASS[b] = KLASS.BRACKET;
 }
@@ -193,13 +195,18 @@ class UniLexer {
       } else if (c === 0x3B || c === 0x2C || c === 0x3A) {                   // ; , :
         end = i + 1; tag = c;
       } else if (c === 0x2E) {                                               // . (incl. ...)
-        if (src.charCodeAt(i + 1) === 0x2E && src.charCodeAt(i + 2) === 0x2E) { end = i + 3; tag = 0x2E; }
+        if (src.charCodeAt(i + 1) === 0x2E && src.charCodeAt(i + 2) === 0x2E) { end = i + 3; tag = OPS.get('...'); }
         else { end = i + 1; tag = T.DOT; }
       } else if (OP_CHARS.has(src[i])) {
-        // directly encoded: tag byte = the operator's own first char ('&&'
-        // is tag '&'); the pooled lexeme carries the full operator
-        let j = i + 1; while (j < len && OP_CHARS.has(src[j])) j++;
-        end = j; tag = c;
+        // every operator gets its OWN byte: longest match against the OPS
+        // table (maximal munch per OPERATOR, not per run — 'a=+b' is '=' then
+        // '+'). Multi-char ops take their 0x80+ byte; single chars their ASCII.
+        let oplen = 1;
+        for (const l of [4, 3, 2]) {
+          if (i + l <= len && OPS.has(src.slice(i, i + l))) { oplen = l; break; }
+        }
+        end = i + oplen;
+        tag = oplen === 1 ? c : OPS.get(src.slice(i, end));
       } else {
         end = i + 1; tag = c < 128 ? c : T.OP;   // bare ASCII punct keeps its own byte
       }
@@ -521,7 +528,7 @@ class UniLexer {
       for (let t = 0; t < Math.min(n, limit); t++) {
         const lex = lexemeOf(t).replace(/\n/g, '↵').replace(/\t/g, '→');
         const link = linkArr[t] === -1 ? '' : ` →[${linkArr[t]}]`;
-        rows.push(`[${String(t).padStart(4)}] ${charOf(t)}  ${KLASS_NAME[classOf(t)].padEnd(8)} d=${depthArr[t]}${link.padEnd(8)} ${lex.length > 28 ? lex.slice(0, 28) + '…' : lex}`);
+        rows.push(`[${String(t).padStart(4)}] ${mnemonicOf(t).padEnd(4)} ${KLASS_NAME[classOf(t)].padEnd(8)} d=${depthArr[t]}${link.padEnd(8)} ${lex.length > 28 ? lex.slice(0, 28) + '…' : lex}`);
       }
       return rows.join('\n');
     }

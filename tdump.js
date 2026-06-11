@@ -159,7 +159,7 @@ function dumpTokens(src, mode = 'brief', lang = 'js') {
       value = (lexeme.length > 40 ? lexeme.slice(0, 40) + '…' : lexeme).replace(/\n/g, '\\n');
     } else value = lexeme;                                                 // bare — class implies kind
 
-    lines.push(`[${String(t).padStart(4)}] ${u.charOf(t)} ${(KLASS_NAME[klass] + '#' + u.poolArr[t]).padEnd(12)} ${value}`);
+    lines.push(`[${String(t).padStart(4)}] ${u.mnemonicOf(t).padEnd(4)} ${(KLASS_NAME[klass] + '#' + u.poolArr[t]).padEnd(12)} ${value}`);
   }
 
   const footer = [`${u.length} tokens`];

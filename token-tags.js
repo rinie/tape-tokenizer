@@ -121,6 +121,37 @@ export const T = {
   KW_CONTINUE:   0x6B,  // k  kontinue
 };
 
+// ── operators — every operator gets its OWN single tag byte ─────────────────
+// Single-char operators use their literal ASCII (the punctuation rule).
+// Multi-char operators get a contiguous high-range block, grouped by family.
+// Why 0x80+ and not the free printables: ~33 multi-char operators vs ~22 free
+// printable bytes, and an arbitrary printable ('$' meaning '&&') would be a
+// FALSE mnemonic in a hex dump — worse than an opaque byte. No control chars;
+// 0x80–0xFE per the encoding rules. OP_LITERAL is the decoder (byte → text).
+export const OPS = new Map([
+  // equality / relational
+  ['==',   0x80], ['===',  0x81], ['!=',   0x82], ['!==',  0x83],
+  ['<=',   0x84], ['>=',   0x85],
+  // shifts
+  ['<<',   0x86], ['>>',   0x87], ['>>>',  0x88],
+  // logical / nullish / chaining
+  ['&&',   0x89], ['||',   0x8A], ['??',   0x8B], ['?.',   0x8C],
+  // arrow, inc/dec, exponent
+  ['=>',   0x8D], ['++',   0x8E], ['--',   0x8F], ['**',   0x90],
+  // compound assignment
+  ['+=',   0x91], ['-=',   0x92], ['*=',   0x93], ['/=',   0x94],
+  ['%=',   0x95], ['**=',  0x96], ['<<=',  0x97], ['>>=',  0x98],
+  ['>>>=', 0x99], ['&=',   0x9A], ['|=',   0x9B], ['^=',   0x9C],
+  ['&&=',  0x9D], ['||=',  0x9E], ['??=',  0x9F],
+  // spread
+  ['...',  0xA0],
+]);
+
+// tag byte → the operator's literal text (single-char ops decode to themselves)
+export const OP_LITERAL = {};
+for (const ch of '!%&*+-/<=>?@^|~') OP_LITERAL[ch.charCodeAt(0)] = ch;
+for (const [lit, byte] of OPS) OP_LITERAL[byte] = lit;
+
 // Reverse map — tag byte → constant name (for debug dumps)
 export const TAG_NAME = Object.fromEntries(
   Object.entries(T).map(([k, v]) => [v, k])
