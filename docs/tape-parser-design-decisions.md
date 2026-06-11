@@ -468,12 +468,13 @@ printable-ASCII scheme is promoted from debug labelling to the tape encoding
 itself. One byte per token: brackets/punct keep their literal ASCII, keywords
 get their lowercase mnemonics (`f`unction, `r`eturn, `i`f — they whisper),
 literals their UPPERCASE initials (`I N D S X R` — they shout), operators
-their own first char (`&&` is tag `&`; the pool has the full lexeme — to free
-`^`/`~` for this, catch moved to `H` and false to `u` in token-tags),
-comments `#`, whitespace `' '`. The coarse class for programmatic queries is
-*derived* from the byte via a 256-entry lookup — no second per-token column.
-Mnemonic for humans, class for machines, one byte for both. `toPrintable()`
-of the full tape is then *ghost source*:
+their own byte (single-char ops their literal ASCII — to free `^`/`~`, catch
+moved to `H` and false to `u`; the 33 multi-char ops a contiguous 0x80–0xA0
+block via the `OPS` table, decoded by `OP_LITERAL`), comments `#`, whitespace
+`' '`. The coarse class for programmatic queries is *derived* from the byte
+via a 256-entry lookup — no second per-token column. Mnemonic for humans,
+class for machines, one byte for both. `toPrintable()` of the full tape is
+then *ghost source*:
 
 ```
 src   │ function add(a, b) {          const nums = [1, 2.5, 0xFF];
@@ -481,6 +482,25 @@ ghost │ f I(I, I) {                    c I = [N, D, N];
 ```
 
 (Note the `N`/`D` int-vs-float distinction surviving into the ghost.)
+
+**The rule (owner's formulation): indirection only for real variation, not
+for a lack of letters — a byte is enough for a programming language.**
+
+- **Closed vocabularies** — keywords, operators, punctuation, brackets: the
+  language defines a fixed, finite set, so the tag byte IS the identity.
+  Direct lexeme↔byte mapping (`KEYWORDS`, `OPS`/`OP_LITERAL`); no lookup to
+  know *which* token. The pool entry for these carries only the occurrence
+  list (the 13a cross-reference), never identity.
+- **Open vocabularies** — identifiers, strings, numbers, comments, text,
+  whitespace runs: unbounded by the language, varied by the program — *real
+  variation* — so the byte carries the class and identity lives in the pool
+  index.
+
+The byte budget confirms "a byte is enough": JS spends ~108 of the 222 usable
+bytes (0x21–0xFE; control chars excluded) — 12 punct/bracket + 15 single-char
+ops + 33 multi-char ops + 40 keywords + 6 literal classes + ws/comment. Even
+C++ (~95 keywords, ~50 operators) fits with room left. The fixed vocabulary of
+a programming language is byte-sized; only its *programs* need indirection.
 
 **Migration state (honest):** sfdiff.js rides unilexer (verified byte-identical
 verdicts); defuse.js rides unilexer (verified semantically identical — tape
