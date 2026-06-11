@@ -467,7 +467,9 @@ links and depth (tolerant, non-faulting).
 printable-ASCII scheme is promoted from debug labelling to the tape encoding
 itself. One byte per token: brackets/punct keep their literal ASCII, keywords
 get their lowercase mnemonics (`f`unction, `r`eturn, `i`f — they whisper),
-literals their UPPERCASE initials (`I N D S X R` — they shout), operators `=`,
+literals their UPPERCASE initials (`I N D S X R` — they shout), operators
+their own first char (`&&` is tag `&`; the pool has the full lexeme — to free
+`^`/`~` for this, catch moved to `H` and false to `u` in token-tags),
 comments `#`, whitespace `' '`. The coarse class for programmatic queries is
 *derived* from the byte via a 256-entry lookup — no second per-token column.
 Mnemonic for humans, class for machines, one byte for both. `toPrintable()`
