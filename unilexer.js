@@ -22,8 +22,11 @@
 //   operators        their own byte: single-char ops their literal ASCII,
 //                    multi-char ops a 0x80+ block (OPS in token-tags;
 //                    OP_LITERAL decodes byte → text — '&&' is 0x89)
-//   comments         '#'                         (same char XML mode uses)
-//   whitespace       ' '  — so toPrintable() reads like ghost source
+//   comments         '#' when single-line; a comment that CONTAINS newlines
+//                    keeps them inside and tags 0x11, rendered C(n)
+//   whitespace       intra-line runs ' ' (0x20); each newline run is its OWN
+//                    token (0x10) — no structural value, but a line SIGNAL.
+//                    toPrintable() breaks lines where the source does
 //
 // The coarse class (for programmatic queries) is DERIVED from the tag byte via
 // a 256-entry lookup — no second per-token column. Mnemonic for humans, class
@@ -45,13 +48,21 @@ const KLASS_NAME = ['ws', 'comment', 'string', 'template', 'regex',
   'number', 'ident', 'keyword', 'op', 'punct', 'bracket',
   'tag', 'text', 'decl'];
 
-const TAG_WS      = 0x20;     // ' '
-const TAG_COMMENT = 0x23;     // '#'
+const TAG_WS      = 0x20;     // ' '  intra-line whitespace (spaces/tabs)
+const TAG_NL      = 0x10;     // newline token — no structural value, but a line
+                              // SIGNAL (owner's byte choice; the token stands
+                              // for a control character, so a control-range
+                              // byte matches its nature)
+const TAG_COMMENT = 0x23;     // '#'  comment without newlines (// or one-line /* */)
+const TAG_COMMENT_ML = 0x11;  // multi-line comment — newlines stay INSIDE the
+                              // token; renders as C(n), n = newlines contained
 
 // tag byte → class, built once from token-tags
 const TAG_CLASS = new Uint8Array(256).fill(KLASS.PUNCT);
 TAG_CLASS[TAG_WS] = KLASS.WS;
+TAG_CLASS[TAG_NL] = KLASS.WS;             // a ws-class token of its own
 TAG_CLASS[TAG_COMMENT] = KLASS.COMMENT;
+TAG_CLASS[TAG_COMMENT_ML] = KLASS.COMMENT;
 TAG_CLASS[T.STRING] = KLASS.STRING;       // "  double-quoted
 TAG_CLASS[T.STRING_SQ] = KLASS.STRING;    // '  single-quoted
 TAG_CLASS[T.TEMPLATE] = KLASS.TEMPLATE;   // X
@@ -85,7 +96,9 @@ const INTERNED = new Set([KLASS.WS, KLASS.IDENT, KLASS.KEYWORD, KLASS.OP, KLASS.
 // ident/op/string; `>` and `/>` are punct.
 const TAG_CLASS_XML = new Uint8Array(256).fill(KLASS.PUNCT);
 TAG_CLASS_XML[TAG_WS] = KLASS.WS;
+TAG_CLASS_XML[TAG_NL] = KLASS.WS;
 TAG_CLASS_XML[TAG_COMMENT] = KLASS.COMMENT;     // #
+TAG_CLASS_XML[TAG_COMMENT_ML] = KLASS.COMMENT;  // C(n)
 TAG_CLASS_XML[0x21] = KLASS.DECL;               // !  <?…?> <!…> <![CDATA[…]]>
 TAG_CLASS_XML[0x7B] = KLASS.TAG;                // {  open tag
 TAG_CLASS_XML[0x7D] = KLASS.TAG;                // }  close tag
@@ -171,13 +184,17 @@ class UniLexer {
 
       if (isWs(c)) {
         let j = i + 1; while (j < len && isWs(src.charCodeAt(j))) j++;
-        end = j; tag = TAG_WS;
+        // newline segments are their OWN tokens (TAG_NL); intra-line runs stay TAG_WS
+        this._emitWs(emit, src, i, j, depth);
+        i = j; continue;
       } else if (c === 0x2F && src.charCodeAt(i + 1) === 0x2F) {            // //
         let j = i + 2; while (j < len && src.charCodeAt(j) !== 0x0A) j++;
-        end = j; tag = TAG_COMMENT;
+        end = j; tag = TAG_COMMENT;                                          // newline excluded
       } else if (c === 0x2F && src.charCodeAt(i + 1) === 0x2A) {            // /*
         let j = i + 2; while (j < len && !(src.charCodeAt(j - 1) === 0x2A && src.charCodeAt(j) === 0x2F)) j++;
-        end = Math.min(j + 1, len); tag = TAG_COMMENT;
+        end = Math.min(j + 1, len);
+        // newlines INSIDE a comment belong to the comment (C(n)); without, '#'
+        tag = src.slice(i, end).includes('\n') ? TAG_COMMENT_ML : TAG_COMMENT;
       } else if (c === 0x22 || c === 0x27) {                                 // " '
         end = this._str(src, i, c); tag = c;   // tagged with its own quote
       } else if (c === 0x60) {                                               // `
@@ -321,7 +338,8 @@ class UniLexer {
           if (src.startsWith('<!--', i)) {
             let j = i + 4; while (j < len && !src.startsWith('-->', j)) j++;
             j = Math.min(j + 3, len);
-            emit(TAG_COMMENT, KLASS.COMMENT, src.slice(start, j), start, depth);
+            const cmt = src.slice(start, j);
+            emit(cmt.includes('\n') ? TAG_COMMENT_ML : TAG_COMMENT, KLASS.COMMENT, cmt, start, depth);
             i = j; continue;
           }
           if (src.startsWith('<![CDATA[', i)) {
@@ -380,10 +398,11 @@ class UniLexer {
           if (src.charCodeAt(j) === 0x3E) { i = j + 1; continue; }
           i = j; inTag = true; continue;
         }
-        // text run up to the next '<'; whitespace-only runs are WS
+        // text run up to the next '<'; whitespace-only runs split into
+        // newline/intra-line tokens like everywhere else
         let j = i; while (j < len && src.charCodeAt(j) !== 0x3C) j++;
         const run = src.slice(start, j);
-        if (/^\s+$/.test(run)) emit(TAG_WS, KLASS.WS, run, start, depth);
+        if (/^\s+$/.test(run)) this._emitWs((tg, lx, of, d) => emit(tg, KLASS.WS, lx, of, d), src, start, j, depth);
         else emit(0x54, KLASS.TEXT, run, start, depth);              // 'T'
         i = j; continue;
       }
@@ -391,7 +410,7 @@ class UniLexer {
       // inside a tag: attributes until '>' or '/>'
       if (c === 0x20 || c === 0x09 || c === 0x0A || c === 0x0D) {
         let j = i + 1; while (j < len && /\s/.test(src[j])) j++;
-        emit(TAG_WS, KLASS.WS, src.slice(start, j), start, depth);
+        this._emitWs((tg, lx, of, d) => emit(tg, KLASS.WS, lx, of, d), src, start, j, depth);
         i = j; continue;
       }
       if (c === 0x22 || c === 0x27) {                                // attr value
@@ -422,6 +441,24 @@ class UniLexer {
     }
 
     return this._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, TAG_CLASS_XML, true);
+  }
+
+  // Split a whitespace run [from,to) into NEWLINE tokens (TAG_NL — each
+  // maximal run of CR-LF chars) and intra-line runs (TAG_WS). The newline is a line
+  // signal; the indent that follows is its own token.
+  _emitWs(emit, src, from, to, depth) {
+    let i = from;
+    while (i < to) {
+      const nl0 = src.charCodeAt(i) === 0x0A || src.charCodeAt(i) === 0x0D;
+      let j = i + 1;
+      while (j < to) {
+        const cj = src.charCodeAt(j);
+        if ((cj === 0x0A || cj === 0x0D) !== nl0) break;
+        j++;
+      }
+      emit(nl0 ? TAG_NL : TAG_WS, src.slice(i, j), i, depth);
+      i = j;
+    }
   }
 
   _str(src, i, quote) {
@@ -505,7 +542,15 @@ class UniLexer {
     // byte is the family, the lexeme is the exact operator, and ops are short
     // enough to show whole (the cpp-digraph precedent: the projection may be
     // wider than one char per token).
-    const mnemonicOf = (t) => (classTable[tagArr[t]] === KLASS.OP ? lexemeOf(t) : String.fromCharCode(tagArr[t]));
+    const mnemonicOf = (t) => {
+      const b = tagArr[t];
+      if (b === TAG_NL) return '\\n';                      // printable escape (dumps)
+      if (b === TAG_COMMENT_ML) {                            // C(n), n = newlines inside
+        return `C(${(lexemeOf(t).match(/\n/g) || []).length})`;
+      }
+      if (classTable[b] === KLASS.OP) return lexemeOf(t);
+      return String.fromCharCode(b);
+    };
 
     // One mnemonic per token — keywords whisper, literals shout, brackets are
     // literal, operators show themselves, whitespace breathes. Ghost source.
@@ -513,7 +558,17 @@ class UniLexer {
     // role, not the surface syntax.)
     function toPrintable() {
       let out = '';
-      for (let t = 0; t < n; t++) out += mnemonicOf(t);
+      // TAG_NL renders as a REAL newline here: the ghost breaks lines where
+      // the source does (dumps use the escaped form via mnemonicOf). A
+      // multi-line comment DISPLAYS AS THE WHITESPACE IT OCCUPIES — just its
+      // line breaks — so the ghost stays line-aligned with the source
+      // (C(n) is the dump form, not the ghost form).
+      for (let t = 0; t < n; t++) {
+        const b = tagArr[t];
+        if (b === TAG_NL) out += '\n';
+        else if (b === TAG_COMMENT_ML) out += '\n'.repeat((lexemeOf(t).match(/\n/g) || []).length);
+        else out += mnemonicOf(t);
+      }
       return out;
     }
 

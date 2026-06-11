@@ -598,11 +598,16 @@ space-step) is detected once and declared in the header; then:
 | rendering | meaning |
 |---|---|
 | `' '` | one inter-token space (the overwhelmingly common case) |
-| `' '(n)` / `\t(n)` | n spaces / tabs on one line |
-| `\n` | newline, **same** indent level — quiet |
-| `+\n` `-\n` `+2\n` | newline, level changed by that many units — **the sign leads** |
-| `\n(k)` | k consecutive newlines (blank lines); with a change: `+\n(2)` |
+| `' '(n)` / `\t(n)` | n spaces / tabs mid-line |
+| `\n` | the NEWLINE TOKEN — byte `0x10`, its own ws token: no structural value, but a line *signal* (its byte sits in the control range its content comes from) |
+| `+` `-` `+2` `=` | on the following INDENT token: level change in units, sign first; `=` = unchanged (quiet) |
+| `-\n` | a zero-indent line — the delta lands on the newline token itself |
+| `\n(k)` | k consecutive newlines (blank lines) |
+| `C(n)` | a comment that CONTAINS n newlines keeps them inside (byte `0x11`); single-line comments stay `#`, the trailing newline excluded |
 | `…"  "` | an off-unit indent shown explicitly — a deviation worth seeing |
+
+With newlines as their own tokens, `toPrintable()` breaks lines where the
+source does — the ghost is line-structured like the original.
 
 The sign comes **first** (owner's call, and the original `+\t`/`-\t` spec):
 scanning the value column, a level change jumps out at the first glyph, while

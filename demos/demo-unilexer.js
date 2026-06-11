@@ -63,9 +63,10 @@ function zipLines(source, tape) {
   const starts = [0];
   for (let i = 0; i < source.length; i++) if (source[i] === '\n') starts.push(i + 1);
   for (let t = 0; t < tape.length; t++) {
+    if (tape.tagOf(t) === 0x10) continue;          // newline tokens ARE the line breaks
     const off = tape.offsetOf(t);
     while (lineNo + 1 < starts.length && off >= starts[lineNo + 1]) { lineNo++; lineStart = starts[lineNo]; }
-    const ch = tape.mnemonicOf(t);
+    const ch = tape.classOf(t) === 0 ? ' ' : tape.mnemonicOf(t);
     if (ch !== ' ') perLine[lineNo] += ch;
     else if (perLine[lineNo] && !perLine[lineNo].endsWith(' ')) perLine[lineNo] += ' ';
   }
