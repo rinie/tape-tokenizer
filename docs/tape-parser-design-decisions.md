@@ -507,6 +507,14 @@ singles 0x26/0x7C (the swap C never made); rare bitwise `&`/`|` pay the block
 indirection. The byte answers "what does it do"; the pool answers "how it was
 written"; OP_LITERAL renders the role's canonical spelling.
 
+The allocation rule, complete (owner's formulation): **no operator-overloading
+mess — one byte is one role, roles never share a byte; frequency analysis
+decides which role gets the short byte; and the assignment is INTERNAL
+preference for checking the representation, not semantics.** Every display
+path decodes through the table (OP_LITERAL for the mnemonic, the pool for the
+spelling), so reallocating a byte costs a legend update, never a meaning
+change.
+
 The byte budget confirms "a byte is enough": JS spends ~108 of the 222 usable
 bytes (0x21–0xFE; control chars excluded) — 12 punct/bracket + 15 single-char
 ops + 33 multi-char ops + 40 keywords + 6 literal classes + ws/comment. Even
