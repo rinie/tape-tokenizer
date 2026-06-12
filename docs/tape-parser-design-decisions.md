@@ -515,9 +515,17 @@ Until then unilexer carries JS, XML, and a Rust LEXICAL mode (raw strings /
 raw idents / nested comments / char-vs-lifetime — the parameterised-end row of
 2a in running code; no Rust keyword/mnemonic table yet, so Rust words tokenize
 as IDENT). The scan loop is parameterised per language (JS_OPTS / RUST_OPTS) —
-one loop with hooks, never a third copy. Acknowledged next for the closer
-taxonomy: PL/SQL's END IF — TWO keywords forming one '}'-role closer, the
-keyword-matched bracket family (cpp precedent) with a multi-word match.
+one loop with hooks, never a third copy. The SQL/PL-SQL mode (Oracle dialect) followed: PL/SQL's block
+keywords ARE the XML name-matched tag family wearing keyword clothes — IF /
+LOOP / CASE / BEGIN open as '{' with the kind as interned value, and END IF is
+ONE '}' token (two keywords, one closer) name-matched to its opener. The
+keyword-vs-builtin split is the 13e encoding rule's boundary case: keywords
+class 'keyword' (byte 'k'), well-known builtins class 'builtin' (byte 'B') —
+both pooled, per-item mnemonic bytes deferred like Rust's. Dialects are a
+registry (SQL_DIALECTS): oracle implemented; mysql / mssql / postgres / duckdb
+foreseen as word-set + quoting entries, not scanner changes. Oracle lexical
+specifics: '' doubled-quote escape, q'[…]' q-quoting (another 2a parameterised
+end), "Quoted" = identifier not string, := <> .. operators.
 
 ### 13f. Whitespace association & the dump views — projections, not tape columns
 

@@ -152,6 +152,8 @@ export const OPS = new Map([
   ['&&=',  0x9D], ['||=',  0x9E], ['??=',  0x9F],
   // spread
   ['...',  0xA0],
+  // SQL family (Oracle and friends): assignment, not-equal, range
+  [':=',   0xA1], ['<>',   0xA2], ['..',   0xA3],
 ]);
 
 // tag byte → the operator's literal text (single-char ops decode to themselves)

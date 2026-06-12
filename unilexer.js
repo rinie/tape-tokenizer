@@ -43,10 +43,16 @@ const KLASS = {
   WS: 0, COMMENT: 1, STRING: 2, TEMPLATE: 3, REGEX: 4,
   NUMBER: 5, IDENT: 6, KEYWORD: 7, OP: 8, PUNCT: 9, BRACKET: 10,
   TAG: 11, TEXT: 12, DECL: 13,          // XML mode
+  BUILTIN: 14,                          // SQL: well-known built-in functions —
+                                        // the owner's split: actual KEYWORDS vs
+                                        // builtins (NVL, SUBSTR, …). Too many
+                                        // for per-item bytes (the §13e rule's
+                                        // boundary case): one byte 'B', interned
+                                        // pool carries which.
 };
 const KLASS_NAME = ['ws', 'comment', 'string', 'template', 'regex',
   'number', 'ident', 'keyword', 'op', 'punct', 'bracket',
-  'tag', 'text', 'decl'];
+  'tag', 'text', 'decl', 'builtin'];
 
 const TAG_WS      = 0x20;     // ' '  intra-line whitespace (spaces/tabs)
 const TAG_NL      = 0x10;     // newline token — no structural value, but a line
@@ -85,7 +91,7 @@ for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]
 // occurrence — the waste is acceptable. XML tag NAMES are a limited vocabulary
 // (interned — open and close share the pool slot, making the name match
 // visible); text/decl content is mostly unique (per occurrence).
-const INTERNED = new Set([KLASS.WS, KLASS.IDENT, KLASS.KEYWORD, KLASS.OP, KLASS.PUNCT, KLASS.BRACKET, KLASS.TAG]);
+const INTERNED = new Set([KLASS.WS, KLASS.IDENT, KLASS.KEYWORD, KLASS.OP, KLASS.PUNCT, KLASS.BRACKET, KLASS.TAG, KLASS.BUILTIN]);
 
 // ── XML mode: structural role over surface syntax ────────────────────────────
 // The mnemonic projection uses the STRUCTURAL role, not the source characters:
@@ -108,6 +114,71 @@ TAG_CLASS_XML[T.STRING] = KLASS.STRING;         // "  attribute values
 TAG_CLASS_XML[T.STRING_SQ] = KLASS.STRING;      // '  attribute values
 TAG_CLASS_XML[T.IDENT] = KLASS.IDENT;           // I  attribute names
 TAG_CLASS_XML[T.OP] = KLASS.OP;                 // =
+
+// ── SQL / PL-SQL mode ─────────────────────────────────────────────────────────
+// PL/SQL's block keywords are the XML name-matched tag family wearing keyword
+// clothes: IF / LOOP / CASE / BEGIN open as '{' with the KIND as the interned
+// value, and END IF is ONE '}' token (two keywords, one closer, value 'if'),
+// name-matched tolerantly to its opener. SQL has no brace family to collide
+// with, so plain { } per the RATFOR rule — exactly like XML tags.
+//
+// The vocabulary split (owner's call): actual KEYWORDS (closed, the language)
+// class 'keyword' byte 'k'; well-known BUILT-IN functions class 'builtin' byte
+// 'B' — both interned, the pool says which. Per-keyword mnemonic bytes are the
+// same deferred vocabulary exercise as Rust's.
+//
+// Dialects: one scanner, swappable word sets. Oracle implemented; mysql /
+// mssql / postgres / duckdb are foreseen entries in SQL_DIALECTS (different
+// keyword/builtin/quoting choices — e.g. mysql backtick identifiers, mssql
+// [bracket] identifiers — land here, not in the scanner).
+const TAG_CLASS_SQL = new Uint8Array(256).fill(KLASS.PUNCT);
+TAG_CLASS_SQL[TAG_WS] = KLASS.WS;
+TAG_CLASS_SQL[TAG_NL] = KLASS.WS;
+TAG_CLASS_SQL[TAG_COMMENT] = KLASS.COMMENT;
+TAG_CLASS_SQL[TAG_COMMENT_ML] = KLASS.COMMENT;
+TAG_CLASS_SQL[0x7B] = KLASS.TAG;                // {  block opener (if/loop/case/begin)
+TAG_CLASS_SQL[0x7D] = KLASS.TAG;                // }  END / END IF / END LOOP / END CASE
+TAG_CLASS_SQL[0x6B] = KLASS.KEYWORD;            // k  keyword (generic byte; pool says which)
+TAG_CLASS_SQL[0x42] = KLASS.BUILTIN;            // B  built-in function
+TAG_CLASS_SQL[T.STRING_SQ] = KLASS.STRING;      // '  string ('' doubles as the escape)
+TAG_CLASS_SQL[T.IDENT] = KLASS.IDENT;           // I  identifier (incl. "Quoted" ones)
+TAG_CLASS_SQL[T.NUMBER] = KLASS.NUMBER;
+TAG_CLASS_SQL[T.DOUBLE] = KLASS.NUMBER;
+for (const ch of '!%&*+-/<=>?@^|~') TAG_CLASS_SQL[ch.charCodeAt(0)] = KLASS.OP;
+for (const byte of OPS.values()) TAG_CLASS_SQL[byte] = KLASS.OP;
+for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET]) TAG_CLASS_SQL[b] = KLASS.BRACKET;
+
+const SQL_DIALECTS = {
+  oracle: {
+    // block structure: opener kinds; 'end' is handled specially (multi-word closer)
+    openers: new Set(['if', 'loop', 'case', 'begin']),
+    keywords: new Set([
+      'select', 'from', 'where', 'insert', 'update', 'delete', 'into', 'values',
+      'set', 'and', 'or', 'not', 'null', 'is', 'as', 'then', 'elsif', 'else',
+      'when', 'declare', 'procedure', 'function', 'package', 'body', 'return',
+      'cursor', 'type', 'exception', 'raise', 'exit', 'while', 'for', 'in',
+      'commit', 'rollback', 'savepoint', 'grant', 'revoke', 'create', 'alter',
+      'drop', 'replace', 'table', 'view', 'index', 'trigger', 'sequence',
+      'union', 'all', 'distinct', 'group', 'by', 'having', 'order', 'asc',
+      'desc', 'between', 'like', 'exists', 'join', 'left', 'right', 'inner',
+      'outer', 'full', 'cross', 'on', 'using', 'connect', 'start', 'with',
+      'fetch', 'open', 'close', 'bulk', 'collect', 'forall', 'pragma',
+      'constant', 'default', 'out', 'nocopy', 'rownum', 'dual', 'true', 'false',
+    ]),
+    builtins: new Set([
+      'nvl', 'nvl2', 'coalesce', 'decode', 'nullif', 'substr', 'instr',
+      'length', 'upper', 'lower', 'initcap', 'trim', 'ltrim', 'rtrim', 'lpad',
+      'rpad', 'replace', 'translate', 'concat', 'chr', 'ascii', 'to_date',
+      'to_char', 'to_number', 'to_timestamp', 'cast', 'sysdate', 'systimestamp',
+      'current_date', 'extract', 'add_months', 'months_between', 'last_day',
+      'next_day', 'trunc', 'round', 'ceil', 'floor', 'abs', 'mod', 'power',
+      'sqrt', 'sign', 'greatest', 'least', 'count', 'sum', 'avg', 'min', 'max',
+      'listagg', 'row_number', 'rank', 'dense_rank', 'lag', 'lead',
+      'regexp_like', 'regexp_substr', 'regexp_replace', 'regexp_instr', 'user',
+    ]),
+  },
+  // mysql: {...}  mssql: {...}  postgres: {...}  duckdb: {...}   ← foreseen
+};
 
 const CLOSE_OF = { [T.LPAREN]: T.RPAREN, [T.LBRACKET]: T.RBRACKET, [T.LBRACE]: T.RBRACE };
 const IS_OPEN  = new Set([T.LPAREN, T.LBRACKET, T.LBRACE]);
@@ -517,6 +588,224 @@ class UniLexer {
       emit(nl0 ? TAG_NL : TAG_WS, src.slice(i, j), i, depth);
       i = j;
     }
+  }
+
+  // ── SQL / PL-SQL mode — keyword-matched block family, dialect word sets ────
+  tokenizeSql(src, dialect = 'oracle') {
+    const d = SQL_DIALECTS[dialect];
+    if (!d) throw new Error(`unknown SQL dialect '${dialect}' (have: ${Object.keys(SQL_DIALECTS).join(', ')})`);
+    const len = src.length;
+    const pools = KLASS_NAME.map(() => []);
+    const internMaps = KLASS_NAME.map((_, k) => (INTERNED.has(k) ? new Map() : null));
+
+    let cap = 1024;
+    let tagArr = new Uint8Array(cap);
+    let poolArr = new Uint32Array(cap);
+    let offArr = new Uint32Array(cap);
+    let linkArr = new Int32Array(cap).fill(-1);
+    let depthArr = new Uint32Array(cap);
+    let n = 0;
+
+    const grow = () => {
+      cap *= 2;
+      const a = new Uint8Array(cap); a.set(tagArr); tagArr = a;
+      const b = new Uint32Array(cap); b.set(poolArr); poolArr = b;
+      const c = new Uint32Array(cap); c.set(offArr); offArr = c;
+      const e = new Int32Array(cap).fill(-1); e.set(linkArr.subarray(0, n)); linkArr = e;
+      const f = new Uint32Array(cap); f.set(depthArr); depthArr = f;
+    };
+    const addToPool = (klass, lexeme, off) => {
+      const pool = pools[klass];
+      if (INTERNED.has(klass)) {
+        const m = internMaps[klass];
+        let idx = m.get(lexeme);
+        if (idx === undefined) { idx = pool.length; pool.push({ lexeme, occ: [] }); m.set(lexeme, idx); }
+        pool[idx].occ.push(off);
+        return idx;
+      }
+      const idx = pool.length;
+      pool.push({ lexeme, off });
+      return idx;
+    };
+    const emit = (tag, klass, lexeme, off, depth) => {
+      if (n >= cap) grow();
+      tagArr[n] = tag;
+      poolArr[n] = addToPool(klass, lexeme, off);
+      offArr[n] = off;
+      linkArr[n] = -1;
+      depthArr[n] = depth;
+      return n++;
+    };
+
+    const kwStack = [];     // open block keywords: { idx, kindId }  (name-matched)
+    const brStack = [];     // ( [ parens/brackets (LIFO)
+    let depth = 0;
+    let i = 0;
+
+    const isSqlIdentStart = (c) => isIdentStart(c);
+    const isSqlIdentPart = (c) => isIdentPart(c) || c === 0x24;   // $ in Oracle idents
+
+    while (i < len) {
+      const start = i;
+      const c = src.charCodeAt(i);
+
+      if (isWs(c)) {
+        let j = i + 1; while (j < len && isWs(src.charCodeAt(j))) j++;
+        this._emitWs((tg, lx, of, dp) => emit(tg, KLASS.WS, lx, of, dp), src, i, j, depth);
+        i = j; continue;
+      }
+      if (c === 0x2D && src.charCodeAt(i + 1) === 0x2D) {           // -- line comment
+        let j = i + 2; while (j < len && src.charCodeAt(j) !== 0x0A) j++;
+        emit(TAG_COMMENT, KLASS.COMMENT, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      if (c === 0x2F && src.charCodeAt(i + 1) === 0x2A) {           // /* … */ (non-nested)
+        let j = i + 2; while (j < len && !(src.charCodeAt(j - 1) === 0x2A && src.charCodeAt(j) === 0x2F)) j++;
+        j = Math.min(j + 1, len);
+        const cmt = src.slice(start, j);
+        emit(cmt.includes(String.fromCharCode(0x0A)) ? TAG_COMMENT_ML : TAG_COMMENT, KLASS.COMMENT, cmt, start, depth);
+        i = j; continue;
+      }
+      if (c === 0x27) {                                             // '…' — '' is the escape
+        const end = this._sqlStr(src, i);
+        emit(T.STRING_SQ, KLASS.STRING, src.slice(start, end), start, depth);
+        i = end; continue;
+      }
+      if (c === 0x22) {                                             // "Quoted" IDENTIFIER (not a string)
+        let j = i + 1; while (j < len && src.charCodeAt(j) !== 0x22) j++;
+        j = Math.min(j + 1, len);
+        emit(T.IDENT, KLASS.IDENT, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      if (isDigit(c) || (c === 0x2E && isDigit(src.charCodeAt(i + 1)))) {
+        const end = this._num(src, i);
+        const lex = src.slice(start, end);
+        emit(/[.eE]/.test(lex) ? T.DOUBLE : T.NUMBER, KLASS.NUMBER, lex, start, depth);
+        i = end; continue;
+      }
+      if (isSqlIdentStart(c)) {
+        let j = i + 1; while (j < len && isSqlIdentPart(src.charCodeAt(j))) j++;
+        const word = src.slice(i, j);
+        const lower = word.toLowerCase();
+
+        // q'[…]' — Oracle's parameterised-delimiter string (q-quoting)
+        if ((lower === 'q' || lower === 'nq') && src.charCodeAt(j) === 0x27) {
+          const end = this._qQuote(src, i, j);
+          emit(T.STRING_SQ, KLASS.STRING, src.slice(start, end), start, depth);
+          i = end; continue;
+        }
+
+        if (lower === 'end') {
+          // the multi-word closer: END [IF|LOOP|CASE] — TWO keywords, ONE '}'
+          let k = j; while (k < len && isWs(src.charCodeAt(k))) k++;
+          let k2 = k; while (k2 < len && isSqlIdentPart(src.charCodeAt(k2))) k2++;
+          const next = src.slice(k, k2).toLowerCase();
+          let kind = null; let end = j;
+          if (next === 'if' || next === 'loop' || next === 'case') { kind = next; end = k2; }
+          depth = depth > 0 ? depth - 1 : 0;
+          // emit the closer; value = the kind it closes (or the popped opener's kind)
+          let closes = kind;
+          let openAt = -1;
+          if (kind) {
+            for (let s = kwStack.length - 1; s >= 0; s--) {
+              if (kwStack[s].kind === kind) { openAt = kwStack[s].idx; kwStack.splice(s, 1); break; }
+            }
+          } else if (kwStack.length) {
+            const top = kwStack.pop();              // plain END: nearest opener, any kind
+            closes = top.kind; openAt = top.idx;
+          }
+          const idx = emit(0x7D, KLASS.TAG, closes ?? 'end', start, depth);
+          if (openAt !== -1) { linkArr[openAt] = idx; linkArr[idx] = openAt; }
+          i = end; continue;
+        }
+
+        if (d.openers.has(lower)) {                 // IF / LOOP / CASE / BEGIN → '{'
+          const idx = emit(0x7B, KLASS.TAG, lower, start, depth);
+          kwStack.push({ idx, kind: lower });
+          depth++;
+          i = j; continue;
+        }
+
+        // the split: keyword vs builtin vs plain identifier. A word in BOTH
+        // sets (e.g. REPLACE) is a builtin when a '(' follows, else a keyword.
+        let p = j; while (p < len && (src.charCodeAt(p) === 0x20 || src.charCodeAt(p) === 0x09)) p++;
+        const calls = src.charCodeAt(p) === 0x28;
+        if (d.builtins.has(lower) && (calls || !d.keywords.has(lower))) {
+          emit(0x42, KLASS.BUILTIN, word, start, depth);             // B
+        } else if (d.keywords.has(lower)) {
+          emit(0x6B, KLASS.KEYWORD, word, start, depth);             // k
+        } else {
+          emit(T.IDENT, KLASS.IDENT, word, start, depth);            // I
+        }
+        i = j; continue;
+      }
+      if (c === 0x28 || c === 0x5B) {                               // ( [
+        const idx = emit(c, KLASS.BRACKET, src[i], start, depth);
+        brStack.push({ idx, close: c === 0x28 ? 0x29 : 0x5D });
+        depth++;
+        i++; continue;
+      }
+      if (c === 0x29 || c === 0x5D) {                               // ) ]
+        depth = depth > 0 ? depth - 1 : 0;
+        const idx = emit(c, KLASS.BRACKET, src[i], start, depth);
+        const top = brStack[brStack.length - 1];
+        if (top && top.close === c) {
+          brStack.pop();
+          linkArr[top.idx] = idx; linkArr[idx] = top.idx;
+        }
+        i++; continue;
+      }
+      if (c === 0x3A && src.charCodeAt(i + 1) === 0x3D) {           // :=
+        emit(OPS.get(':='), KLASS.OP, ':=', start, depth);
+        i += 2; continue;
+      }
+      if (c === 0x2E && src.charCodeAt(i + 1) === 0x2E) {           // .. range
+        emit(OPS.get('..'), KLASS.OP, '..', start, depth);
+        i += 2; continue;
+      }
+      if (OP_CHARS.has(src[i])) {                                   // ops, longest match
+        let oplen = 1;
+        for (const l of [3, 2]) {
+          if (i + l <= len && OPS.has(src.slice(i, i + l))) { oplen = l; break; }
+        }
+        const lex = src.slice(i, i + oplen);
+        emit(oplen === 1 ? c : OPS.get(lex), KLASS.OP, lex, start, depth);
+        i += oplen; continue;
+      }
+      emit(c < 128 ? c : T.OP, KLASS.PUNCT, src[i], start, depth);  // ; , . : @ %…
+      i++;
+    }
+
+    return this._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, TAG_CLASS_SQL, true);
+  }
+
+  // Oracle string: '…' where '' (doubled quote) is the escape; may span lines.
+  _sqlStr(src, i) {
+    const len = src.length;
+    let j = i + 1;
+    while (j < len) {
+      if (src.charCodeAt(j) === 0x27) {
+        if (src.charCodeAt(j + 1) === 0x27) { j += 2; continue; }   // '' — escaped quote
+        return j + 1;
+      }
+      j++;
+    }
+    return len;   // unterminated: token to EOF (start is honest)
+  }
+
+  // Oracle q-quoting: q'X…X' where X is a chosen delimiter; the bracket pairs
+  // ( [ { < close with their partners. Another §2a parameterised end.
+  _qQuote(src, i, quotePos) {
+    const len = src.length;
+    const open = src.charCodeAt(quotePos + 1);
+    const PAIR = { 0x28: 0x29, 0x5B: 0x5D, 0x7B: 0x7D, 0x3C: 0x3E };
+    const close = PAIR[open] ?? open;
+    let j = quotePos + 2;
+    while (j < len) {
+      if (src.charCodeAt(j) === close && src.charCodeAt(j + 1) === 0x27) return j + 2;
+      j++;
+    }
+    return len;
   }
 
   // Rust raw string / raw identifier, decided AFTER the ident scan stopped at
