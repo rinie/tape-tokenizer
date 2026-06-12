@@ -515,6 +515,14 @@ path decodes through the table (OP_LITERAL for the mnemonic, the pool for the
 spelling), so reallocating a byte costs a legend update, never a meaning
 change.
 
+First measurement (tfreq.js over this repo's own 31 files, 57k tokens — an
+op-dense lexer codebase, so indicative not representative): assignment 1358,
+=== 438, && 217, ++ 200, + 182, || 163; bare bitwise &/| not in the top 15 —
+the logical/bitwise swap holds on data. Keyword ranks (const > if > this >
+let > return) match the token-tags tier guesses. Notable: === outranks most
+singles but every single is spoken for by the own-char rule; it keeps its
+block byte.
+
 The byte budget confirms "a byte is enough": JS spends ~108 of the 222 usable
 bytes (0x21–0xFE; control chars excluded) — 12 punct/bracket + 15 single-char
 ops + 33 multi-char ops + 40 keywords + 6 literal classes + ws/comment. Even
