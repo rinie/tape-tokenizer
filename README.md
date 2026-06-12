@@ -42,7 +42,7 @@ node scan.js --outline 1 app.js :: folded breadth-first view (raise to peel)
 node sfdiff.js old.js new.js    :: subforest diff — whole units, not line deltas
 node tdump.js app.js            :: token dump (pool index/value; quiet whitespace)
 node tdump.js --signal app.js   :: significant tokens only; --full = revertible
-node tfreq.js src\\              :: token/operator-role frequencies over a tree
+node tfreq.js src\              :: token/operator-role frequencies over a tree
 node scan.js --help             :: full usage
 ```
 
