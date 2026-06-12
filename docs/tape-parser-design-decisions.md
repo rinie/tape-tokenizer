@@ -124,7 +124,7 @@ nesting?, multiline?, context? }`. Worked examples:
 | `"""…"""` (Python) | complex | complex | multiline |
 | `<…>` include (C) | context (line) | simple | §1-gate |
 | **regex `/…/`** | **context (token)** | **stateful (`[ ]`)** | the only context+stateful — "the hardest simple thing" |
-| Rust `r###"…"###` | context+param | parameterised | future |
+| Rust `r###"…"###` | context+param | parameterised | **implemented** (unilexer Rust mode: decided after the ident scan stops at the `#`/`"` — bounded forward peek, no backtracking, nothing un-emitted; closer = `"` + the captured hash count) |
 | here-doc | complex+param | parameterised | future |
 
 Regex is implemented (`_skipRegex` + a `prevValue` left-context tracker, JS only):
@@ -511,7 +511,13 @@ as the 13b historical spike and tokenizer.js is now demo-only.
 lexical-scanner.js (scan/validate — seams, cpp/XML families, multi-language
 tables, the harvested-table mechanism) is the remaining target; the
 structural-seam machinery moves last because it is the most load-bearing.
-Until then unilexer is JS-only by construction.
+Until then unilexer carries JS, XML, and a Rust LEXICAL mode (raw strings /
+raw idents / nested comments / char-vs-lifetime — the parameterised-end row of
+2a in running code; no Rust keyword/mnemonic table yet, so Rust words tokenize
+as IDENT). The scan loop is parameterised per language (JS_OPTS / RUST_OPTS) —
+one loop with hooks, never a third copy. Acknowledged next for the closer
+taxonomy: PL/SQL's END IF — TWO keywords forming one '}'-role closer, the
+keyword-matched bracket family (cpp precedent) with a multi-word match.
 
 ### 13f. Whitespace association & the dump views — projections, not tape columns
 

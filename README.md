@@ -59,7 +59,7 @@ harvest.js           derive a lexical table from a *.tmLanguage.json grammar
 defuse.js            breadth-first def/use projection (rides unilexer.js)
 tdump.js             token dump: pool index/value pairs; full | brief | signal
 unilexer.js          ONE lexer, ONE tape: value pools + structural links in a
-                     single pass; the tag byte IS the printable mnemonic (JS)
+                     single pass; tag byte IS the mnemonic (JS, XML, Rust-lexical)
 valuetape.js         §13b spike (historical; superseded by unilexer.js)
 mergegate.js         §13c spike: scanner as a structure-aware merge gate
 sfdiff.js            subforest diff — compare versions as whole top-level units

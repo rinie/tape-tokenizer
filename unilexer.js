@@ -124,8 +124,38 @@ function isDigit(c)      { return c >= 0x30 && c <= 0x39; }
 function isIdentStart(c) { return (c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A) || c === 0x5F || c === 0x24 || c > 127; }
 function isIdentPart(c)  { return isIdentStart(c) || isDigit(c); }
 
+// Per-language scan options — the lexical-table idea (§2) arriving at the
+// unified lexer: ONE scan loop, hooks per language, never a third copy of it.
+const JS_OPTS = {
+  keywords: KEYWORDS,    // lexeme → mnemonic byte (closed vocabulary)
+  regex: true,           // /…/ literals via the prevValue gate
+  templates: true,       // `…` literals
+  charLifetimes: false,  // Rust ' handling (char literal vs lifetime)
+  rawStrings: false,     // Rust r#"…"# (parameterised end) + r#ident
+  nestedComments: false, // Rust /* /* */ */ — depth counter, not a flag
+};
+
+const RUST_OPTS = {
+  keywords: new Map(),   // honest gap: no Rust keyword/mnemonic table yet —
+                         // all words tokenize as IDENT until that vocabulary
+                         // exercise is done (fn, let, impl, match, …)
+  regex: false,
+  templates: false,
+  charLifetimes: true,
+  rawStrings: true,
+  nestedComments: true,
+};
+
 class UniLexer {
-  tokenize(src) {
+  // Rust mode: the §2a parameterised-end row in running code — raw strings
+  // r"…" / r#"…"# / r##"…"## (closer = '"' + the CAPTURED hash count, no
+  // escapes), raw identifiers r#match, byte/C-string prefixes b"…" br#"…"#
+  // c"…" cr#"…"#, char literals 'x' vs lifetimes 'a, nested block comments.
+  tokenizeRust(src) {
+    return this.tokenize(src, RUST_OPTS);
+  }
+
+  tokenize(src, opts = JS_OPTS) {
     const len = src.length;
     const pools = KLASS_NAME.map(() => []);
     const internMaps = KLASS_NAME.map((_, k) => (INTERNED.has(k) ? new Map() : null));
@@ -191,15 +221,33 @@ class UniLexer {
         let j = i + 2; while (j < len && src.charCodeAt(j) !== 0x0A) j++;
         end = j; tag = TAG_COMMENT;                                          // newline excluded
       } else if (c === 0x2F && src.charCodeAt(i + 1) === 0x2A) {            // /*
-        let j = i + 2; while (j < len && !(src.charCodeAt(j - 1) === 0x2A && src.charCodeAt(j) === 0x2F)) j++;
-        end = Math.min(j + 1, len);
+        let j;
+        if (opts.nestedComments) {
+          // Rust/D: block comments NEST — a depth counter, not a flag (§2a)
+          let d = 1; j = i + 2;
+          while (j < len && d > 0) {
+            if (src.charCodeAt(j) === 0x2F && src.charCodeAt(j + 1) === 0x2A) { d++; j += 2; }
+            else if (src.charCodeAt(j) === 0x2A && src.charCodeAt(j + 1) === 0x2F) { d--; j += 2; }
+            else j++;
+          }
+          end = j;
+        } else {
+          j = i + 2; while (j < len && !(src.charCodeAt(j - 1) === 0x2A && src.charCodeAt(j) === 0x2F)) j++;
+          end = Math.min(j + 1, len);
+        }
         // newlines INSIDE a comment belong to the comment (C(n)); without, '#'
         tag = src.slice(i, end).includes('\n') ? TAG_COMMENT_ML : TAG_COMMENT;
+      } else if (opts.charLifetimes && c === 0x27) {                         // Rust '
+        // 'x' / '\n' are char literals (tag '); 'a / 'static are lifetimes
+        // (ident-class — they NAME something). Decided by bounded peek:
+        // ident-start after the quote with no closing quote right after it.
+        const r = this._charOrLifetime(src, i);
+        end = r.end; tag = r.lifetime ? T.IDENT : T.STRING_SQ;
       } else if (c === 0x22 || c === 0x27) {                                 // " '
         end = this._str(src, i, c); tag = c;   // tagged with its own quote
-      } else if (c === 0x60) {                                               // `
+      } else if (opts.templates && c === 0x60) {                             // `
         end = this._tmpl(src, i); tag = T.TEMPLATE;
-      } else if (c === 0x2F && !prevValue && (end = this._regex(src, i)) !== -1) {
+      } else if (opts.regex && c === 0x2F && !prevValue && (end = this._regex(src, i)) !== -1) {
         tag = T.REGEX;
       } else if (isDigit(c) || (c === 0x2E && isDigit(src.charCodeAt(i + 1)))) {
         end = this._num(src, i);
@@ -208,8 +256,18 @@ class UniLexer {
         tag = (/^0[xXbBoO]/.test(lex) || !/[.eE]/.test(lex)) ? T.NUMBER : T.DOUBLE;
       } else if (isIdentStart(c)) {
         let j = i + 1; while (j < len && isIdentPart(src.charCodeAt(j))) j++;
-        end = j;
-        tag = KEYWORDS.get(src.slice(i, j)) ?? T.IDENT;
+        const word = src.slice(i, j);
+        // Rust raw strings / raw idents: the ident scan ALREADY stopped at the
+        // '#' or '"', so the decision point needs no backtracking — a bounded
+        // forward peek from here (the parameterised-end row of §2a).
+        if (opts.rawStrings && (word === 'r' || word === 'b' || word === 'br' || word === 'c' || word === 'cr')) {
+          const r = this._rawOpen(src, j, word);
+          if (r) { end = r.end; tag = r.tag; }
+          else { end = j; tag = opts.keywords.get(word) ?? T.IDENT; }
+        } else {
+          end = j;
+          tag = opts.keywords.get(word) ?? T.IDENT;
+        }
       } else if (TAG_CLASS[c] === KLASS.BRACKET) {
         end = i + 1; tag = c;
       } else if (c === 0x3B || c === 0x2C || c === 0x3A) {                   // ; , :
@@ -459,6 +517,60 @@ class UniLexer {
       emit(nl0 ? TAG_NL : TAG_WS, src.slice(i, j), i, depth);
       i = j;
     }
+  }
+
+  // Rust raw string / raw identifier, decided AFTER the ident scan stopped at
+  // the '#' or '"' — bounded forward peek, no backtracking, nothing un-emitted.
+  //   r#*"  …  "#*   raw string: the closer is '"' + the CAPTURED hash count;
+  //                  NO escape processing inside (that is the point of raw)
+  //   r#ident        raw identifier (exactly one hash, then ident-start)
+  // Returns { end, tag } or null (plain ident after all — e.g. a variable r).
+  _rawOpen(src, j, word) {
+    const len = src.length;
+    let k = j;
+    while (k < len && src.charCodeAt(k) === 0x23) k++;   // count '#'s
+    const hashes = k - j;
+    if (k < len && src.charCodeAt(k) === 0x22) {
+      // raw string: scan for '"' followed by `hashes` '#'s — parameterised end
+      let p = k + 1;
+      while (p < len) {
+        if (src.charCodeAt(p) === 0x22) {
+          let h = 0;
+          while (h < hashes && src.charCodeAt(p + 1 + h) === 0x23) h++;
+          if (h === hashes) return { end: p + 1 + hashes, tag: T.STRING };
+        }
+        p++;
+      }
+      return { end: len, tag: T.STRING };   // unterminated: token to EOF (start is honest)
+    }
+    if (word.endsWith('r') && hashes === 1 && k < len && isIdentStart(src.charCodeAt(k))) {
+      let p = k + 1;
+      while (p < len && isIdentPart(src.charCodeAt(p))) p++;
+      return { end: p, tag: T.IDENT };      // raw identifier r#match
+    }
+    return null;
+  }
+
+  // Rust `'`: char literal ('x', '\n', '\u{1F600}') vs lifetime ('a, 'static).
+  // Lifetime iff ident-start follows the quote and the char after that is not
+  // the closing quote; '\…' is always a char literal.
+  _charOrLifetime(src, i) {
+    const len = src.length;
+    const c1 = src.charCodeAt(i + 1);
+    if (c1 === 0x5C) {                                  // '\…' — char with escape
+      let p = i + 2;
+      while (p < len && src.charCodeAt(p) !== 0x27 && src.charCodeAt(p) !== 0x0A) p++;
+      return { end: Math.min(p + 1, len), lifetime: false };
+    }
+    if (isIdentStart(c1) && src.charCodeAt(i + 2) !== 0x27) {
+      let p = i + 2;                                    // lifetime: 'name
+      while (p < len && isIdentPart(src.charCodeAt(p))) p++;
+      return { end: p, lifetime: true };
+    }
+    // plain char 'x' (or a lone quote — consume to the close on this line)
+    let p = i + 1;
+    while (p < len && src.charCodeAt(p) !== 0x27 && src.charCodeAt(p) !== 0x0A) p++;
+    return { end: Math.min(p + 1, len), lifetime: false };
   }
 
   _str(src, i, quote) {
