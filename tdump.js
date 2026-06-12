@@ -50,8 +50,8 @@ OPTIONS
                    kind — quotes would be noise); whitespace as compact indent
                    deltas (+\\n, -\\n, +2\\n — sign first), quiet when unchanged.
       --signal     Significant tokens only — no whitespace, no comments.
-  -l, --lang <l>   Force language: js | xml. Default: detect from the file
-                   extension (.xml/.html/.htm/.svg -> xml, else js).
+  -l, --lang <l>   Force language: js | xml | rust. Default: detect from the file
+                   extension (.xml/.html/.htm/.svg -> xml, .rs -> rust, else js).
   -h, --help       Show this help and exit.
   -V, --version    Print version and exit.
 
@@ -164,7 +164,9 @@ function briefWs(lexeme, unit, state, isNl, nextIsIntraWs) {
 // naturally). Full shows the exact source text JSON-escaped — that column
 // concatenates back to the original.
 function dumpTokens(src, mode = 'brief', lang = 'js') {
-  const u = lang === 'xml' ? new UniLexer().tokenizeXml(src) : new UniLexer().tokenize(src);
+  const u = lang === 'xml' ? new UniLexer().tokenizeXml(src)
+    : lang === 'rust' ? new UniLexer().tokenizeRust(src)
+    : new UniLexer().tokenize(src);
   const unit = detectIndentUnit(src);
   const state = { units: 0, afterNl: true };   // file start counts as a line start
   const lines = [];
@@ -226,10 +228,10 @@ function main() {
 
   const mode = values.full ? 'full' : values.signal ? 'signal' : 'brief';
   let lang = values.lang;
-  if (lang && lang !== 'js' && lang !== 'xml') fail(`unknown --lang '${lang}' (expected js | xml)`);
+  if (lang && lang !== 'js' && lang !== 'xml' && lang !== 'rust') fail(`unknown --lang '${lang}' (expected js | xml | rust)`);
   if (!lang) {
     const ext = positionals[0] === '-' ? '' : extname(positionals[0]).toLowerCase();
-    lang = ['.xml', '.html', '.htm', '.svg'].includes(ext) ? 'xml' : 'js';
+    lang = ['.xml', '.html', '.htm', '.svg'].includes(ext) ? 'xml' : ext === '.rs' ? 'rust' : 'js';
   }
   let src;
   try {
