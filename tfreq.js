@@ -24,6 +24,8 @@ const EXT_LANG = {
   '.xml': 'xml', '.html': 'xml', '.htm': 'xml', '.svg': 'xml',
   '.rs': 'rust',
   '.sql': 'sql', '.pks': 'sql', '.pkb': 'sql', '.plsql': 'sql',
+  '.py': 'py',
+  '.yaml': 'yaml', '.yml': 'yaml',
 };
 
 const HELP = `tape-tokenizer tfreq — token frequencies for byte-allocation tuning (v${VERSION})
@@ -91,6 +93,8 @@ function analyze(files) {
     const u = lang === 'xml' ? lx.tokenizeXml(src)
       : lang === 'rust' ? lx.tokenizeRust(src)
       : lang === 'sql' ? lx.tokenizeSql(src)
+      : lang === 'py' ? lx.tokenizePy(src)
+      : lang === 'yaml' ? lx.tokenizeYaml(src)
       : lx.tokenize(src);
     files_++; tokens += u.length; bytes += src.length;
 

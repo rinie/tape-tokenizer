@@ -536,6 +536,20 @@ as the 13b historical spike and tokenizer.js is now demo-only.
 lexical-scanner.js (scan/validate — seams, cpp/XML families, multi-language
 tables, the harvested-table mechanism) is the remaining target; the
 structural-seam machinery moves last because it is the most load-bearing.
+Python and YAML added the INDENTATION bracket family: a deeper
+line opens TAG_INDENT (0x0E), a shallower one closes TAG_DEDENT (0x0F) —
+zero-width tokens at the line's content start, linked like any pair, rendered
+as the digraphs ':{' / '}:' (Python's real { } dict braces stay brackets — no
+overloading). Inside ( [ { the family is suppressed (implicit line joining,
+the CPython rule); blank/comment-only lines change nothing; EOF closes what is
+open (a Python file always dedents implicitly). Python keywords ride the role
+registry (def -> 'f', raise -> 'h' the throw role, True/False/None -> T/u/0,
+del -> 'd'; soft keywords match/case stay identifiers). YAML is linter-grade:
+'' doubling in single quotes, '---'/'...' markers close all open levels, and
+block scalars '|' / '>' are ONE string token whose end is the dedent — an
+INDENTATION-parameterised end for the 2a tally, tagged with their own
+indicator byte.
+
 Until then unilexer carries JS, XML, and a Rust LEXICAL mode (raw strings /
 raw idents / nested comments / char-vs-lifetime — the parameterised-end row of
 2a in running code; no Rust keyword/mnemonic table yet, so Rust words tokenize

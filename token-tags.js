@@ -159,8 +159,9 @@ export const OPS = new Map([
   ['%=',   0x95], ['**=',  0x96], ['<<=',  0x97], ['>>=',  0x98],
   ['>>>=', 0x99], ['&=',   0x9A], ['|=',   0x9B], ['^=',   0x9C],
   ['&&=',  0x9D], ['||=',  0x9E], ['??=',  0x9F],
-  // spread, range
-  ['...',  0xA0], ['..',   0xA3],
+  // spread, range, floor-division (Python — '//' never reaches the op path in
+  // languages where it spells a comment)
+  ['...',  0xA0], ['..',   0xA3], ['//',   0xA6],
 ]);
 
 // Roles with no C/JS counterpart get their own block byte; dialects spell them

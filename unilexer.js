@@ -59,6 +59,16 @@ const TAG_NL      = 0x10;     // newline token — no structural value, but a li
                               // SIGNAL (owner's byte choice; the token stands
                               // for a control character, so a control-range
                               // byte matches its nature)
+const TAG_INDENT  = 0x0E;     // SO (shift out)  — INDENT: a line opened a level.
+const TAG_DEDENT  = 0x0F;     // SI (shift in)   — DEDENT: a level closed.
+                              // The indentation bracket family (Python, YAML).
+                              // Zero-width tokens at the line's content start;
+                              // control-range like TAG_NL (line-signal tokens).
+                              // Python's real { } dict braces stay brackets —
+                              // the family must not overload them (RATFOR
+                              // refinement) — so the projection renders the
+                              // digraphs ':{' and '}:' (the colon that
+                              // introduces blocks, bookended outside).
 const TAG_COMMENT = 0x23;     // '#'  comment without newlines (// or one-line /* */)
 const TAG_COMMENT_ML = 0x11;  // multi-line comment — newlines stay INSIDE the
                               // token; renders as C(n), n = newlines contained
@@ -149,6 +159,52 @@ for (const ch of '!%&*+-/<=>?@^|~') TAG_CLASS_SQL[ch.charCodeAt(0)] = KLASS.OP;
 for (const byte of OPS.values()) TAG_CLASS_SQL[byte] = KLASS.OP;
 TAG_CLASS_SQL[OP_CONCAT] = KLASS.OP;
 for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET]) TAG_CLASS_SQL[b] = KLASS.BRACKET;
+
+// Python rides the JS class table (same keyword/literal/op bytes) plus the
+// indent family.
+const TAG_CLASS_PY = TAG_CLASS.slice();
+TAG_CLASS_PY[TAG_INDENT] = KLASS.TAG;
+TAG_CLASS_PY[TAG_DEDENT] = KLASS.TAG;
+
+// YAML: indent family + per-language byte choices — '|' and '>' are STRING
+// bytes here (a block scalar is a string whose delimiter is its indicator);
+// '!' is the DECL byte ('---' / '...' document markers).
+const TAG_CLASS_YAML = new Uint8Array(256).fill(KLASS.PUNCT);
+TAG_CLASS_YAML[TAG_WS] = KLASS.WS;
+TAG_CLASS_YAML[TAG_NL] = KLASS.WS;
+TAG_CLASS_YAML[TAG_COMMENT] = KLASS.COMMENT;
+TAG_CLASS_YAML[TAG_COMMENT_ML] = KLASS.COMMENT;
+TAG_CLASS_YAML[TAG_INDENT] = KLASS.TAG;
+TAG_CLASS_YAML[TAG_DEDENT] = KLASS.TAG;
+TAG_CLASS_YAML[0x22] = KLASS.STRING;            // "double"
+TAG_CLASS_YAML[0x27] = KLASS.STRING;            // 'single' ('' doubles)
+TAG_CLASS_YAML[0x7C] = KLASS.STRING;            // |  literal block scalar
+TAG_CLASS_YAML[0x3E] = KLASS.STRING;            // >  folded block scalar
+TAG_CLASS_YAML[0x21] = KLASS.DECL;              // !  --- / ... document markers
+TAG_CLASS_YAML[T.IDENT] = KLASS.IDENT;
+TAG_CLASS_YAML[T.NUMBER] = KLASS.NUMBER;
+TAG_CLASS_YAML[T.DOUBLE] = KLASS.NUMBER;
+for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]) {
+  TAG_CLASS_YAML[b] = KLASS.BRACKET;            // flow style [a, b] {k: v}
+}
+
+// Python keywords ride the ROLE registry where a role exists; the rest take
+// the generic keyword byte 'k'. Soft keywords (match/case) stay identifiers.
+const PY_KEYWORDS = new Map([
+  // same lexeme, same byte as JS
+  ...['if', 'else', 'for', 'while', 'return', 'class', 'import', 'in',
+    'try', 'finally', 'continue', 'break', 'yield', 'await', 'async']
+    .map((w) => [w, KEYWORDS.get(w)]),
+  // role-grounded
+  ['def', 0x66],     // the function role ('f')
+  ['del', 0x64],     // the delete role ('d')
+  ['raise', 0x68],   // the throw role ('h')
+  ['True', 0x54], ['False', 0x75], ['None', 0x30],
+  // generic 'k'
+  ...['elif', 'except', 'pass', 'with', 'as', 'from', 'is', 'not', 'and',
+    'or', 'lambda', 'global', 'nonlocal', 'assert']
+    .map((w) => [w, 0x6B]),
+]);
 
 const SQL_DIALECTS = {
   oracle: {
@@ -603,6 +659,379 @@ class UniLexer {
     }
   }
 
+  // Shared tape builder for the newer modes (the older three keep their inline
+  // copies until the consolidation sweep reaches them).
+  _tape() {
+    const pools = KLASS_NAME.map(() => []);
+    const internMaps = KLASS_NAME.map((_, k) => (INTERNED.has(k) ? new Map() : null));
+    let cap = 1024;
+    let tagArr = new Uint8Array(cap);
+    let poolArr = new Uint32Array(cap);
+    let offArr = new Uint32Array(cap);
+    let linkArr = new Int32Array(cap).fill(-1);
+    let depthArr = new Uint32Array(cap);
+    let n = 0;
+    const grow = () => {
+      cap *= 2;
+      const a = new Uint8Array(cap); a.set(tagArr); tagArr = a;
+      const b = new Uint32Array(cap); b.set(poolArr); poolArr = b;
+      const c = new Uint32Array(cap); c.set(offArr); offArr = c;
+      const d = new Int32Array(cap).fill(-1); d.set(linkArr.subarray(0, n)); linkArr = d;
+      const e = new Uint32Array(cap); e.set(depthArr); depthArr = e;
+    };
+    const addToPool = (klass, lexeme, off) => {
+      const pool = pools[klass];
+      if (INTERNED.has(klass)) {
+        const m = internMaps[klass];
+        let idx = m.get(lexeme);
+        if (idx === undefined) { idx = pool.length; pool.push({ lexeme, occ: [] }); m.set(lexeme, idx); }
+        pool[idx].occ.push(off);
+        return idx;
+      }
+      const idx = pool.length;
+      pool.push({ lexeme, off });
+      return idx;
+    };
+    const emit = (tag, klass, lexeme, off, depth) => {
+      if (n >= cap) grow();
+      tagArr[n] = tag;
+      poolArr[n] = addToPool(klass, lexeme, off);
+      offArr[n] = off;
+      linkArr[n] = -1;
+      depthArr[n] = depth;
+      return n++;
+    };
+    const link = (a, b) => { linkArr[a] = b; linkArr[b] = a; };
+    const finish = (self, src, classTable, spanRaw) =>
+      self._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, classTable, spanRaw);
+    return { emit, link, finish };
+  }
+
+  // ── Python mode — the INDENTATION bracket family ───────────────────────────
+  // Indentation IS the structure (depth is literally the column): a deeper
+  // line opens TAG_INDENT, a shallower one closes with TAG_DEDENT — zero-width
+  // tokens at the line's content start, linked like any bracket pair. Inside
+  // ( [ { the family is suppressed (implicit line joining, the CPython rule);
+  // blank and comment-only lines change nothing. EOF closes what's open —
+  // a Python file always dedents implicitly. Tabs count to the next multiple
+  // of 8 (the CPython tabstop).
+  tokenizePy(src) {
+    const tp = this._tape();
+    const { emit, link } = tp;
+    const len = src.length;
+    const indents = [0];
+    const indentTok = [];
+    const brStack = [];     // ( [ { — real brackets, also suppress the family
+    let depth = 0;
+    let atLineStart = true;
+    let i = 0;
+
+    const PYPFX = /^[rRbBuUfF]{1,2}$/;
+    const emitWsRun = (from, to) =>
+      this._emitWs((tg, lx, of, dp) => emit(tg, KLASS.WS, lx, of, dp), src, from, to, depth);
+
+    while (i < len) {
+      let c = src.charCodeAt(i);
+
+      if (atLineStart && brStack.length === 0) {
+        let j = i; let col = 0;
+        while (j < len) {
+          const cj = src.charCodeAt(j);
+          if (cj === 0x20) col += 1;
+          else if (cj === 0x09) col += 8 - (col % 8);
+          else break;
+          j++;
+        }
+        if (j > i) emitWsRun(i, j);
+        i = j;
+        if (i >= len) break;
+        c = src.charCodeAt(i);
+        if (c !== 0x0A && c !== 0x0D && c !== 0x23) {     // real content
+          if (col > indents[indents.length - 1]) {
+            indents.push(col);
+            const idx = emit(TAG_INDENT, KLASS.TAG, '', i, depth);
+            indentTok.push(idx);
+            depth++;
+          } else {
+            while (indents.length > 1 && col < indents[indents.length - 1]) {
+              indents.pop();
+              depth = depth > 0 ? depth - 1 : 0;
+              const idx = emit(TAG_DEDENT, KLASS.TAG, '', i, depth);
+              const open = indentTok.pop();
+              if (open !== undefined) link(open, idx);
+            }
+          }
+        }
+        atLineStart = false;
+        continue;
+      }
+
+      const start = i;
+      if (isWs(c)) {
+        let j = i + 1; while (j < len && isWs(src.charCodeAt(j))) j++;
+        // stop AFTER the last newline: the next line's leading indent must be
+        // left for the line-start branch to measure
+        const run = src.slice(i, j);
+        const lastNl = Math.max(run.lastIndexOf('\n'), run.lastIndexOf('\r'));
+        if (lastNl !== -1) {
+          j = i + lastNl + 1;
+          atLineStart = true;
+        }
+        emitWsRun(i, j);
+        i = j; continue;
+      }
+      if (c === 0x23) {                                       // # comment
+        let j = i + 1; while (j < len && src.charCodeAt(j) !== 0x0A) j++;
+        emit(TAG_COMMENT, KLASS.COMMENT, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      if (c === 0x22 || c === 0x27) {                         // strings (no prefix)
+        i = this._pyString(src, i, c, start, depth, emit);
+        continue;
+      }
+      if (isDigit(c) || (c === 0x2E && isDigit(src.charCodeAt(i + 1)))) {
+        const end = this._num(src, i);
+        const lex = src.slice(start, end);
+        emit(/[.eE]/.test(lex) && !/^0[xXbBoO]/.test(lex) ? T.DOUBLE : T.NUMBER, KLASS.NUMBER, lex, start, depth);
+        i = end; continue;
+      }
+      if (isIdentStart(c)) {
+        let j = i + 1; while (j < len && isIdentPart(src.charCodeAt(j))) j++;
+        const word = src.slice(i, j);
+        const q = j < len ? src.charCodeAt(j) : -1;
+        if (PYPFX.test(word) && (q === 0x22 || q === 0x27)) { // r'…' b"…" f'…'
+          i = this._pyString(src, j, q, start, depth, emit);
+          continue;
+        }
+        const kw = PY_KEYWORDS.get(word);
+        emit(kw ?? T.IDENT, kw ? KLASS.KEYWORD : KLASS.IDENT, word, start, depth);
+        i = j; continue;
+      }
+      if (TAG_CLASS[c] === KLASS.BRACKET) {                   // ( [ { ) ] }
+        if (c === 0x28 || c === 0x5B || c === 0x7B) {
+          const idx = emit(c, KLASS.BRACKET, src[i], start, depth);
+          brStack.push({ idx, close: CLOSE_OF[c] });
+          depth++;
+        } else {
+          depth = depth > 0 ? depth - 1 : 0;
+          const idx = emit(c, KLASS.BRACKET, src[i], start, depth);
+          const top = brStack[brStack.length - 1];
+          if (top && top.close === c) { brStack.pop(); link(top.idx, idx); }
+        }
+        i++; continue;
+      }
+      if (c === 0x3A && src.charCodeAt(i + 1) === 0x3D) {     // := walrus — assignment role
+        emit(0x3D, KLASS.OP, ':=', start, depth);
+        i += 2; continue;
+      }
+      if (c === 0x2D && src.charCodeAt(i + 1) === 0x3E) {     // -> — the arrow role
+        emit(0x8D, KLASS.OP, '->', start, depth);
+        i += 2; continue;
+      }
+      if (OP_CHARS.has(src[i])) {
+        let oplen = 1;
+        for (const l of [3, 2]) {
+          if (i + l <= len && OPS.has(src.slice(i, i + l))) { oplen = l; break; }
+        }
+        const lex = src.slice(i, i + oplen);
+        emit(OPS.get(lex) ?? c, KLASS.OP, lex, start, depth);
+        i += oplen; continue;
+      }
+      emit(c < 128 ? c : T.OP, KLASS.PUNCT, src[i], start, depth);
+      i++;
+    }
+    while (indents.length > 1) {                              // implicit EOF dedents
+      indents.pop();
+      depth = depth > 0 ? depth - 1 : 0;
+      const idx = emit(TAG_DEDENT, KLASS.TAG, '', len, depth);
+      const open = indentTok.pop();
+      if (open !== undefined) link(open, idx);
+    }
+    return tp.finish(this, src, TAG_CLASS_PY, true);
+  }
+
+  // Python string from its quote char (prefix already consumed into start):
+  // triple-quoted is multiline; single-quoted is newline-bounded. The escape
+  // skip is the same for raw strings (a backslash still defuses a closer).
+  _pyString(src, qpos, quote, start, depth, emit) {
+    const len = src.length;
+    const triple = src.charCodeAt(qpos + 1) === quote && src.charCodeAt(qpos + 2) === quote;
+    let j = qpos + (triple ? 3 : 1);
+    while (j < len) {
+      const c = src.charCodeAt(j);
+      if (c === 0x5C) { j += 2; continue; }
+      if (triple) {
+        if (c === quote && src.charCodeAt(j + 1) === quote && src.charCodeAt(j + 2) === quote) { j += 3; break; }
+      } else {
+        if (c === 0x0A) break;                                 // newline-bounded
+        if (c === quote) { j++; break; }
+      }
+      j++;
+    }
+    j = Math.min(j, len);
+    emit(quote, KLASS.STRING, src.slice(start, j), start, depth);
+    return j;
+  }
+
+  // ── YAML mode — indent family + linter-grade scalars ───────────────────────
+  // '#' comments (line start or after whitespace), both quote styles ('' is
+  // the single-quote escape), '---' / '...' document markers (DECL — they also
+  // close all open indent levels), block scalars '|' / '>' consumed as ONE
+  // string token whose end is the dedent (an indentation-parameterised end),
+  // flow brackets [ ] { } linked, plain words as identifiers.
+  tokenizeYaml(src) {
+    const tp = this._tape();
+    const { emit, link } = tp;
+    const len = src.length;
+    const indents = [0];
+    const indentTok = [];
+    const brStack = [];
+    let depth = 0;
+    let atLineStart = true;
+    let lineCol = 0;
+    let i = 0;
+
+    const emitWsRun = (from, to) =>
+      this._emitWs((tg, lx, of, dp) => emit(tg, KLASS.WS, lx, of, dp), src, from, to, depth);
+    const closeAll = (at) => {
+      while (indents.length > 1) {
+        indents.pop();
+        depth = depth > 0 ? depth - 1 : 0;
+        const idx = emit(TAG_DEDENT, KLASS.TAG, '', at, depth);
+        const open = indentTok.pop();
+        if (open !== undefined) link(open, idx);
+      }
+    };
+    const isWordChar = (c) => isIdentPart(c) || c === 0x2D || c === 0x2E || c === 0x2F;
+
+    while (i < len) {
+      let c = src.charCodeAt(i);
+
+      if (atLineStart && brStack.length === 0) {
+        let j = i; let col = 0;
+        while (j < len && src.charCodeAt(j) === 0x20) { col++; j++; }
+        if (j > i) emitWsRun(i, j);
+        i = j;
+        if (i >= len) break;
+        c = src.charCodeAt(i);
+        if (c !== 0x0A && c !== 0x0D && c !== 0x23) {
+          if ((src.startsWith('---', i) || src.startsWith('...', i))
+              && (i + 3 >= len || isWs(src.charCodeAt(i + 3)))) {
+            closeAll(i);                                       // marker resets structure
+            emit(0x21, KLASS.DECL, src.slice(i, i + 3), i, depth);
+            i += 3; lineCol = 0; atLineStart = false; continue;
+          }
+          if (col > indents[indents.length - 1]) {
+            indents.push(col);
+            const idx = emit(TAG_INDENT, KLASS.TAG, '', i, depth);
+            indentTok.push(idx);
+            depth++;
+          } else {
+            while (indents.length > 1 && col < indents[indents.length - 1]) {
+              indents.pop();
+              depth = depth > 0 ? depth - 1 : 0;
+              const idx = emit(TAG_DEDENT, KLASS.TAG, '', i, depth);
+              const open = indentTok.pop();
+              if (open !== undefined) link(open, idx);
+            }
+          }
+          lineCol = col;
+        }
+        atLineStart = false;
+        continue;
+      }
+
+      const start = i;
+      if (isWs(c)) {
+        let j = i + 1; while (j < len && isWs(src.charCodeAt(j))) j++;
+        // stop AFTER the last newline: the next line's leading indent must be
+        // left for the line-start branch to measure
+        const run = src.slice(i, j);
+        const lastNl = Math.max(run.lastIndexOf('\n'), run.lastIndexOf('\r'));
+        if (lastNl !== -1) {
+          j = i + lastNl + 1;
+          atLineStart = true;
+        }
+        emitWsRun(i, j);
+        i = j; continue;
+      }
+      if (c === 0x23) {                                        // comment (post-ws by loop shape)
+        let j = i + 1; while (j < len && src.charCodeAt(j) !== 0x0A) j++;
+        emit(TAG_COMMENT, KLASS.COMMENT, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      if (c === 0x27) {                                        // 'single' — '' escape
+        const end = this._sqlStr(src, i);
+        emit(0x27, KLASS.STRING, src.slice(start, end), start, depth);
+        i = end; continue;
+      }
+      if (c === 0x22) {                                        // "double" — backslash escape
+        let j = i + 1;
+        while (j < len && src.charCodeAt(j) !== 0x22) { if (src.charCodeAt(j) === 0x5C) j++; j++; }
+        j = Math.min(j + 1, len);
+        emit(0x22, KLASS.STRING, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      if ((c === 0x7C || c === 0x3E)) {                        // | or > block scalar
+        let j = i + 1;
+        while (j < len && /[+\-0-9]/.test(src[j])) j++;        // chomping/indent modifiers
+        let k = j; while (k < len && (src.charCodeAt(k) === 0x20 || src.charCodeAt(k) === 0x09)) k++;
+        const atEol = k >= len || src.charCodeAt(k) === 0x0A || src.charCodeAt(k) === 0x0D;
+        if (atEol) {
+          // consume following lines while blank or indented deeper than lineCol
+          let p = k;
+          for (;;) {
+            // advance past the newline of the current line
+            while (p < len && src.charCodeAt(p) !== 0x0A) p++;
+            if (p >= len) break;
+            p++;                                               // past the newline
+            // measure next line
+            let q = p; let col = 0;
+            while (q < len && src.charCodeAt(q) === 0x20) { col++; q++; }
+            const ch = q < len ? src.charCodeAt(q) : -1;
+            if (ch === -1) { p = len; break; }
+            if (ch === 0x0A || ch === 0x0D) { p = q; continue; }   // blank line — keep going
+            if (col > lineCol) { p = q; continue; }                // body line — keep going
+            p = p - 1; break;                                      // dedent: scalar ended before this line's newline... keep the newline outside
+          }
+          const end = Math.min(Math.max(p, k), len);
+          emit(c, KLASS.STRING, src.slice(start, end), start, depth);
+          i = end; continue;
+        }
+        emit(c < 128 ? c : T.OP, KLASS.PUNCT, src[i], start, depth);
+        i++; continue;
+      }
+      if (TAG_CLASS_YAML[c] === KLASS.BRACKET) {               // flow style
+        if (c === 0x28 || c === 0x5B || c === 0x7B) {
+          const idx = emit(c, KLASS.BRACKET, src[i], start, depth);
+          brStack.push({ idx, close: CLOSE_OF[c] });
+          depth++;
+        } else {
+          depth = depth > 0 ? depth - 1 : 0;
+          const idx = emit(c, KLASS.BRACKET, src[i], start, depth);
+          const top = brStack[brStack.length - 1];
+          if (top && top.close === c) { brStack.pop(); link(top.idx, idx); }
+        }
+        i++; continue;
+      }
+      if (isDigit(c)) {
+        const end = this._num(src, i);
+        const lex = src.slice(start, end);
+        emit(/[.eE]/.test(lex) ? T.DOUBLE : T.NUMBER, KLASS.NUMBER, lex, start, depth);
+        i = end; continue;
+      }
+      if (isIdentStart(c)) {                                   // plain scalar word
+        let j = i + 1; while (j < len && isWordChar(src.charCodeAt(j))) j++;
+        emit(T.IDENT, KLASS.IDENT, src.slice(start, j), start, depth);
+        i = j; continue;
+      }
+      emit(c < 128 ? c : T.OP, KLASS.PUNCT, src[i], start, depth);  // : - & * ! ? , …
+      i++;
+    }
+    closeAll(len);
+    return tp.finish(this, src, TAG_CLASS_YAML, true);
+  }
+
   // ── SQL / PL-SQL mode — keyword-matched block family, dialect word sets ────
   tokenizeSql(src, dialect = 'oracle') {
     const d = SQL_DIALECTS[dialect];
@@ -962,6 +1391,8 @@ class UniLexer {
     const mnemonicOf = (t) => {
       const b = tagArr[t];
       if (b === TAG_NL) return '\\n';                      // printable escape (dumps)
+      if (b === TAG_INDENT) return ':{';                     // indent family digraphs —
+      if (b === TAG_DEDENT) return '}:';                     // role kept, braces not overloaded
       if (b === TAG_COMMENT_ML) {                            // C(n), n = newlines inside
         return `C(${(lexemeOf(t).match(/\n/g) || []).length})`;
       }
@@ -1032,7 +1463,7 @@ class UniLexer {
         if ((k !== KLASS.BRACKET && k !== KLASS.TAG) || linkArr[t] !== -1) continue;
         const isTag = k === KLASS.TAG;
         const ch = isTag ? lexemeOf(t) : charOf(t);
-        if (IS_OPEN.has(tagArr[t]) || tagArr[t] === 0x7B) {
+        if (IS_OPEN.has(tagArr[t]) || tagArr[t] === 0x7B || tagArr[t] === TAG_INDENT) {
           findings.push({ kind: isTag ? 'unclosed-tag' : 'unmatched-open', char: ch, offset: offArr[t], startOffset: offArr[t], endOffset: src.length, tapeIndex: t });
         } else {
           findings.push({ kind: isTag ? 'orphan-close-tag' : 'orphan-close', char: ch, offset: offArr[t], tapeIndex: t });

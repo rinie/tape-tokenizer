@@ -50,9 +50,11 @@ OPTIONS
                    kind — quotes would be noise); whitespace as compact indent
                    deltas (+\\n, -\\n, +2\\n — sign first), quiet when unchanged.
       --signal     Significant tokens only — no whitespace, no comments.
-  -l, --lang <l>   Force language: js | xml | rust | sql. Default: detect from the file
+  -l, --lang <l>   Force language: js | xml | rust | sql | py | yaml.
+                   Default: detect from the file
                    extension (.xml/.html/.htm/.svg -> xml, .rs -> rust,
-                   .sql/.pks/.pkb -> sql [Oracle dialect], else js).
+                   .sql/.pks/.pkb -> sql [Oracle], .py -> py,
+                   .yaml/.yml -> yaml, else js).
   -h, --help       Show this help and exit.
   -V, --version    Print version and exit.
 
@@ -168,6 +170,8 @@ function dumpTokens(src, mode = 'brief', lang = 'js') {
   const u = lang === 'xml' ? new UniLexer().tokenizeXml(src)
     : lang === 'rust' ? new UniLexer().tokenizeRust(src)
     : lang === 'sql' ? new UniLexer().tokenizeSql(src)
+    : lang === 'py' ? new UniLexer().tokenizePy(src)
+    : lang === 'yaml' ? new UniLexer().tokenizeYaml(src)
     : new UniLexer().tokenize(src);
   const unit = detectIndentUnit(src);
   const state = { units: 0, afterNl: true };   // file start counts as a line start
@@ -230,12 +234,14 @@ function main() {
 
   const mode = values.full ? 'full' : values.signal ? 'signal' : 'brief';
   let lang = values.lang;
-  if (lang && !['js', 'xml', 'rust', 'sql'].includes(lang)) fail(`unknown --lang '${lang}' (expected js | xml | rust | sql)`);
+  if (lang && !['js', 'xml', 'rust', 'sql', 'py', 'yaml'].includes(lang)) fail(`unknown --lang '${lang}' (expected js | xml | rust | sql | py | yaml)`);
   if (!lang) {
     const ext = positionals[0] === '-' ? '' : extname(positionals[0]).toLowerCase();
     lang = ['.xml', '.html', '.htm', '.svg'].includes(ext) ? 'xml'
       : ext === '.rs' ? 'rust'
       : ['.sql', '.pks', '.pkb', '.plsql'].includes(ext) ? 'sql'
+      : ext === '.py' ? 'py'
+      : ['.yaml', '.yml'].includes(ext) ? 'yaml'
       : 'js';
   }
   let src;

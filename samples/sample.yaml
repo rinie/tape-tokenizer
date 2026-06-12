@@ -1,0 +1,26 @@
+# a CI-style document: mappings, sequences, block scalars, flow style
+---
+name: build-and-test
+on:
+  push:
+    branches: [main, 'release-*']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GREETING: "hello \"world\""
+      MOTTO: 'it''s fine'
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: script
+        run: |
+          echo one
+          echo two   # not a comment: inside the block scalar
+        shell: bash
+      - name: folded
+        note: >
+          folded text
+          stays one token
+  done: true
+...
