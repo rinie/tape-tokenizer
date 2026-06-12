@@ -14,6 +14,64 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — operator ROLE registry (PR #31)
+
+- **The byte answers "what does it do"; the pool answers "how it was written."**
+  OPS reframed as the operator-role registry with C/JS-grounded canonical
+  spellings; dialects map their spellings onto roles: Oracle `:=` → assignment
+  (0x3D), `=` → equality (0x80 — the Pascal/Oracle reading), `<>`/`!=`/`^=` →
+  one not-equal role, `||` → a new CONCAT role byte (mapping it to logical-or
+  would mis-role; mapping to `+` would overload arithmetic).
+- **The swap C never made**: logical `&&`/`||` vastly outnumber bitwise, so the
+  singles 0x26/0x7C now carry the LOGICAL roles and bitwise `&`/`|` moved to
+  the block — frequency buys the short byte, the keyword rule applied to
+  operators. Display unchanged everywhere (mnemonic column = canonical role
+  spelling via OP_LITERAL, value = the lexeme; the ghost already showed
+  lexemes).
+
+## PR #30 — Oracle SQL/PL-SQL mode · 2026-06-12
+
+- PL/SQL block keywords are the XML name-matched tag family wearing keyword
+  clothes: `IF`/`LOOP`/`CASE`/`BEGIN` open as `{` with the kind as interned
+  value; **`END IF` is one `}` token** (two keywords, one closer), name-matched
+  tolerantly; plain `END` closes the nearest opener.
+- The vocabulary split: keywords class `keyword` byte `k`, well-known
+  **built-ins** class `builtin` byte `B` (NVL, SUBSTR, …); a word in both sets
+  (REPLACE) is a builtin when `(` follows. Dialects are a data registry —
+  oracle implemented; mysql/mssql/postgres/duckdb foreseen as word-set entries.
+- Oracle lexical: `--` comments, `'it''s'` doubled-quote escape, `q'[…]'`
+  q-quoting (another §2a parameterised end), `"Quoted"` = identifier.
+
+## PR #29 — Rust lexical mode · 2026-06-12
+
+- The §2a **parameterised end** in running code: raw strings `r#"…"#` close on
+  `"` + the CAPTURED hash count (`r##"even a "# stays inside"##` is one
+  token). Decided with **no backtracking** — the ident scan already stops at
+  the `#`/`"`; bounded forward peek, tape stays append-only.
+- The scan loop became parameterised per language (JS_OPTS/RUST_OPTS hooks) —
+  one loop, never a third copy. Raw idents `r#match`, nested block comments
+  (depth counter), char-vs-lifetime `'x'` vs `'static`. Gap: no Rust keyword
+  table yet — words tokenize as IDENT.
+
+## PR #28 — tdump: escape newlines in values · 2026-06-12
+
+- Audit: multi-line TOKENS must display internal newlines as `\n`, never as
+  real breaks. Templates leaked; fixed via escapeNl on all brief/signal values.
+  Invariant: only the newline token (0x10) and the ghost produce real breaks.
+
+## PR #27 — Newline is its own token (0x10) · 2026-06-11
+
+- Each newline run is its own ws-class token — no structural value, but a line
+  SIGNAL; ws runs split into newline + intra-line indent tokens (JS and XML).
+- Comments KEEP their newlines: byte 0x11, rendered `C(n)`; and in the ghost a
+  multi-line comment displays as the whitespace it occupies (its line breaks),
+  keeping the ghost line-aligned with the source. tdump deltas moved to the
+  indent token (`+`/`-`/`=`), sign first.
+
+## PR #26 — Changelog catch-up #19–#25 · 2026-06-11
+
+- This file brought up to date through the encoding wave.
+
 ## PR #25 — Operator/literal encoding arc · 2026-06-11
 
 Six commits, three owner decisions, one rule at the end:

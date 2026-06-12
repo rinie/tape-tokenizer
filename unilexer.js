@@ -36,7 +36,7 @@
 // tokenizer.js (defuse) and lexical-scanner.js (scan/validate — seams, cpp,
 // XML, multi-language tables) are migration targets, not yet migrated.
 
-import { T, KEYWORDS, OPS } from './token-tags.js';
+import { T, KEYWORDS, OPS, OP_LITERAL, OP_CONCAT, SQL_OP_ROLES } from './token-tags.js';
 
 // ── classes (coarse, derived from the tag byte) ──────────────────────────────
 const KLASS = {
@@ -83,6 +83,7 @@ for (const byte of KEYWORDS.values()) TAG_CLASS[byte] = KLASS.KEYWORD;
 // the OPS table, decoded back to text by OP_LITERAL.
 for (const ch of '!%&*+-/<=>?@^|~') TAG_CLASS[ch.charCodeAt(0)] = KLASS.OP;
 for (const byte of OPS.values()) TAG_CLASS[byte] = KLASS.OP;   // multi-char ops, 0x80+
+TAG_CLASS[OP_CONCAT] = KLASS.OP;
 for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]) {
   TAG_CLASS[b] = KLASS.BRACKET;
 }
@@ -146,12 +147,14 @@ TAG_CLASS_SQL[T.NUMBER] = KLASS.NUMBER;
 TAG_CLASS_SQL[T.DOUBLE] = KLASS.NUMBER;
 for (const ch of '!%&*+-/<=>?@^|~') TAG_CLASS_SQL[ch.charCodeAt(0)] = KLASS.OP;
 for (const byte of OPS.values()) TAG_CLASS_SQL[byte] = KLASS.OP;
+TAG_CLASS_SQL[OP_CONCAT] = KLASS.OP;
 for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET]) TAG_CLASS_SQL[b] = KLASS.BRACKET;
 
 const SQL_DIALECTS = {
   oracle: {
     // block structure: opener kinds; 'end' is handled specially (multi-word closer)
     openers: new Set(['if', 'loop', 'case', 'begin']),
+    opRoles: SQL_OP_ROLES,   // spelling -> role byte (:= = <> != ^= ||)
     keywords: new Set([
       'select', 'from', 'where', 'insert', 'update', 'delete', 'into', 'values',
       'set', 'and', 'or', 'not', 'null', 'is', 'as', 'then', 'elsif', 'else',
@@ -215,6 +218,10 @@ const RUST_OPTS = {
   charLifetimes: true,
   rawStrings: true,
   nestedComments: true,
+  hashAttr: true,        // '#' of #[derive(…)] is the ANNOTATION role — byte
+                         // '@' (the C/JS-ground glyph: decorators/annotations).
+                         // Without this the bare '#' would take byte 0x23,
+                         // which the class table reads as COMMENT.
 };
 
 class UniLexer {
@@ -355,7 +362,13 @@ class UniLexer {
           if (i + l <= len && OPS.has(src.slice(i, i + l))) { oplen = l; break; }
         }
         end = i + oplen;
-        tag = oplen === 1 ? c : OPS.get(src.slice(i, end));
+        // singles route through OPS too: '&' / '|' are the BITWISE roles and
+        // live in the block now (0x26/0x7C carry logical && / ||)
+        tag = OPS.get(src.slice(i, end)) ?? c;
+      } else if (opts.hashAttr && c === 0x23) {
+        // Rust attribute hash: the ANNOTATION role, ground glyph '@' —
+        // 0x23 is the comment-role byte and must not be emitted as punct
+        end = i + 1; tag = 0x40;
       } else {
         end = i + 1; tag = c < 128 ? c : T.OP;   // bare ASCII punct keeps its own byte
       }
@@ -755,8 +768,8 @@ class UniLexer {
         }
         i++; continue;
       }
-      if (c === 0x3A && src.charCodeAt(i + 1) === 0x3D) {           // :=
-        emit(OPS.get(':='), KLASS.OP, ':=', start, depth);
+      if (c === 0x3A && src.charCodeAt(i + 1) === 0x3D) {           // := — assignment ROLE
+        emit(d.opRoles.get(':='), KLASS.OP, ':=', start, depth);
         i += 2; continue;
       }
       if (c === 0x2E && src.charCodeAt(i + 1) === 0x2E) {           // .. range
@@ -764,12 +777,15 @@ class UniLexer {
         i += 2; continue;
       }
       if (OP_CHARS.has(src[i])) {                                   // ops, longest match
+        // dialect spellings resolve to ROLE bytes first (= -> equality,
+        // <> / ^= -> not-equal, || -> concat), then the shared registry
         let oplen = 1;
         for (const l of [3, 2]) {
-          if (i + l <= len && OPS.has(src.slice(i, i + l))) { oplen = l; break; }
+          const cand = src.slice(i, i + l);
+          if (i + l <= len && (d.opRoles.has(cand) || OPS.has(cand))) { oplen = l; break; }
         }
         const lex = src.slice(i, i + oplen);
-        emit(oplen === 1 ? c : OPS.get(lex), KLASS.OP, lex, start, depth);
+        emit(d.opRoles.get(lex) ?? OPS.get(lex) ?? c, KLASS.OP, lex, start, depth);
         i += oplen; continue;
       }
       emit(c < 128 ? c : T.OP, KLASS.PUNCT, src[i], start, depth);  // ; , . : @ %…
@@ -949,7 +965,7 @@ class UniLexer {
       if (b === TAG_COMMENT_ML) {                            // C(n), n = newlines inside
         return `C(${(lexemeOf(t).match(/\n/g) || []).length})`;
       }
-      if (classTable[b] === KLASS.OP) return lexemeOf(t);
+      if (classTable[b] === KLASS.OP) return OP_LITERAL[b] ?? lexemeOf(t);
       return String.fromCharCode(b);
     };
 

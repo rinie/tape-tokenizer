@@ -498,6 +498,15 @@ for a lack of letters — a byte is enough for a programming language.**
   variation* — so the byte carries the class and identity lives in the pool
   index.
 
+**Operators are encoded by ROLE** (refinement, owner's call): OPS is the
+operator-role registry — canonical C/JS-grounded spellings, dialect spellings
+mapped on top (SQL_OP_ROLES: `:=` → assignment, `=` → equality, `<>`/`^=` →
+not-equal, `||` → a concat role of its own). And frequency buys the short
+byte, the keyword rule applied to operators: logical `&&`/`||` take the
+singles 0x26/0x7C (the swap C never made); rare bitwise `&`/`|` pay the block
+indirection. The byte answers "what does it do"; the pool answers "how it was
+written"; OP_LITERAL renders the role's canonical spelling.
+
 The byte budget confirms "a byte is enough": JS spends ~108 of the 222 usable
 bytes (0x21–0xFE; control chars excluded) — 12 punct/bracket + 15 single-char
 ops + 33 multi-char ops + 40 keywords + 6 literal classes + ws/comment. Even
