@@ -97,6 +97,12 @@ function detectIndentUnit(src) {
   return { kind: 'space', width, label: `${width} spaces` };
 }
 
+// Newlines inside a token's value display as the 2-char escape — only the
+// newline TOKEN (0x10) and the ghost ever produce real line breaks.
+function escapeNl(s) {
+  return s.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+}
+
 // Sign-first delta string ('' when unchanged)
 function deltaSign(delta) {
   if (delta === 0) return '';
@@ -183,8 +189,10 @@ function dumpTokens(src, mode = 'brief', lang = 'js') {
       const nextIsIntraWs = t + 1 < u.length && u.classOf(t + 1) === KLASS.WS && u.tagOf(t + 1) !== 0x10;
       value = briefWs(lexeme, unit, state, isNl, nextIsIntraWs);
     } else if (klass === KLASS.COMMENT || klass === KLASS.TEXT || klass === KLASS.DECL) {
-      value = (lexeme.length > 40 ? lexeme.slice(0, 40) + '…' : lexeme).replace(/\n/g, '\\n');
-    } else value = lexeme;                                                 // bare — class implies kind
+      value = escapeNl(lexeme.length > 40 ? lexeme.slice(0, 40) + '…' : lexeme);
+    } else value = escapeNl(lexeme);   // bare — class implies kind; a multi-line
+                                       // lexeme (template) DISPLAYS its newlines
+                                       // as \n escapes, never as real breaks
 
     lines.push(`[${String(t).padStart(4)}] ${u.mnemonicOf(t).padEnd(4)} ${(KLASS_NAME[klass] + '#' + u.poolArr[t]).padEnd(12)} ${value}`);
   }
