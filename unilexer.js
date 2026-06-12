@@ -218,6 +218,10 @@ const RUST_OPTS = {
   charLifetimes: true,
   rawStrings: true,
   nestedComments: true,
+  hashAttr: true,        // '#' of #[derive(…)] is the ANNOTATION role — byte
+                         // '@' (the C/JS-ground glyph: decorators/annotations).
+                         // Without this the bare '#' would take byte 0x23,
+                         // which the class table reads as COMMENT.
 };
 
 class UniLexer {
@@ -361,6 +365,10 @@ class UniLexer {
         // singles route through OPS too: '&' / '|' are the BITWISE roles and
         // live in the block now (0x26/0x7C carry logical && / ||)
         tag = OPS.get(src.slice(i, end)) ?? c;
+      } else if (opts.hashAttr && c === 0x23) {
+        // Rust attribute hash: the ANNOTATION role, ground glyph '@' —
+        // 0x23 is the comment-role byte and must not be emitted as punct
+        end = i + 1; tag = 0x40;
       } else {
         end = i + 1; tag = c < 128 ? c : T.OP;   // bare ASCII punct keeps its own byte
       }
