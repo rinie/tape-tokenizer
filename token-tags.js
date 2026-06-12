@@ -128,21 +128,30 @@ export const T = {
   KW_CONTINUE:   0x6B,  // k  kontinue
 };
 
-// ── operators — every operator gets its OWN single tag byte ─────────────────
-// Single-char operators use their literal ASCII (the punctuation rule).
-// Multi-char operators get a contiguous high-range block, grouped by family.
-// Why 0x80+ and not the free printables: ~33 multi-char operators vs ~22 free
-// printable bytes, and an arbitrary printable ('$' meaning '&&') would be a
-// FALSE mnemonic in a hex dump — worse than an opaque byte. No control chars;
-// 0x80–0xFE per the encoding rules. OP_LITERAL is the decoder (byte → text).
+// ── operators — the ROLE registry: every operator ROLE gets its own byte ────
+// The byte answers "what does it do"; the pool answers "how was it written".
+// Canonical spellings are C/JS-grounded (the RATFOR move); dialects map their
+// spellings onto roles (Oracle := -> assignment, = -> equality, <> -> !=).
+//
+// Frequency buys the short byte (the keyword rule applied to operators):
+// logical AND/OR vastly outnumber bitwise in real code, so the singles
+// 0x26 '&' / 0x7C '|' are the LOGICAL roles — the swap C never made — and the
+// rare bitwise ops pay the block-byte indirection.
+//
+// Single-char operators otherwise use their literal ASCII; multi-char roles a
+// contiguous high-range block, grouped by family. Why 0x80+ and not the free
+// printables: too few, and a reused printable would be a FALSE mnemonic in a
+// hex dump. No control chars. OP_LITERAL decodes byte -> canonical spelling.
 export const OPS = new Map([
   // equality / relational
   ['==',   0x80], ['===',  0x81], ['!=',   0x82], ['!==',  0x83],
   ['<=',   0x84], ['>=',   0x85],
   // shifts
   ['<<',   0x86], ['>>',   0x87], ['>>>',  0x88],
-  // logical / nullish / chaining
-  ['&&',   0x89], ['||',   0x8A], ['??',   0x8B], ['?.',   0x8C],
+  // logical (the swap: frequent roles take the singles), nullish, chaining
+  ['&&',   0x26], ['||',   0x7C], ['??',   0x8B], ['?.',   0x8C],
+  // bitwise — rare, so they moved to the block (0x89/0x8A retired)
+  ['&',    0xA4], ['|',    0xA5],
   // arrow, inc/dec, exponent
   ['=>',   0x8D], ['++',   0x8E], ['--',   0x8F], ['**',   0x90],
   // compound assignment
@@ -150,16 +159,29 @@ export const OPS = new Map([
   ['%=',   0x95], ['**=',  0x96], ['<<=',  0x97], ['>>=',  0x98],
   ['>>>=', 0x99], ['&=',   0x9A], ['|=',   0x9B], ['^=',   0x9C],
   ['&&=',  0x9D], ['||=',  0x9E], ['??=',  0x9F],
-  // spread
-  ['...',  0xA0],
-  // SQL family (Oracle and friends): assignment, not-equal, range
-  [':=',   0xA1], ['<>',   0xA2], ['..',   0xA3],
+  // spread, range
+  ['...',  0xA0], ['..',   0xA3],
 ]);
 
-// tag byte → the operator's literal text (single-char ops decode to themselves)
+// Roles with no C/JS counterpart get their own block byte; dialects spell them
+// (Oracle '||' is concat, NOT logical-or — mapping it to 0x7C would mis-role).
+export const OP_CONCAT = 0xA1;   // canonical display '||' (the SQL spelling)
+
+// Dialect spelling -> role byte. := / <> / ^= are SPELLINGS of existing roles,
+// not new operators; they live here, not in OPS.
+export const SQL_OP_ROLES = new Map([
+  [':=', 0x3D],          // assignment
+  ['=',  0x80],          // equality (the Pascal/Oracle reading of '=')
+  ['<>', 0x82], ['!=', 0x82], ['^=', 0x82],   // three spellings, one role
+  ['||', OP_CONCAT],     // concat
+]);
+
+// tag byte → the role's CANONICAL spelling. '&' and '|' are excluded from the
+// self-decoding singles: those bytes carry the logical roles now.
 export const OP_LITERAL = {};
-for (const ch of '!%&*+-/<=>?@^|~') OP_LITERAL[ch.charCodeAt(0)] = ch;
+for (const ch of '!%*+-/<=>?@^~') OP_LITERAL[ch.charCodeAt(0)] = ch;
 for (const [lit, byte] of OPS) OP_LITERAL[byte] = lit;
+OP_LITERAL[OP_CONCAT] = '||';
 
 // Reverse map — tag byte → constant name (for debug dumps)
 export const TAG_NAME = Object.fromEntries(
