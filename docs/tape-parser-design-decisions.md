@@ -552,19 +552,43 @@ indicator byte.
 
 Until then unilexer carries JS, XML, and a Rust LEXICAL mode (raw strings /
 raw idents / nested comments / char-vs-lifetime — the parameterised-end row of
-2a in running code; no Rust keyword/mnemonic table yet, so Rust words tokenize
-as IDENT). The scan loop is parameterised per language (JS_OPTS / RUST_OPTS) —
-one loop with hooks, never a third copy. The SQL/PL-SQL mode (Oracle dialect) followed: PL/SQL's block
-keywords ARE the XML name-matched tag family wearing keyword clothes — IF /
-LOOP / CASE / BEGIN open as '{' with the kind as interned value, and END IF is
-ONE '}' token (two keywords, one closer) name-matched to its opener. The
-keyword-vs-builtin split is the 13e encoding rule's boundary case: keywords
-class 'keyword' (byte 'k'), well-known builtins class 'builtin' (byte 'B') —
-both pooled, per-item mnemonic bytes deferred like Rust's. Dialects are a
-registry (SQL_DIALECTS): oracle implemented; mysql / mssql / postgres / duckdb
-foreseen as word-set + quoting entries, not scanner changes. Oracle lexical
-specifics: '' doubled-quote escape, q'[…]' q-quoting (another 2a parameterised
-end), "Quoted" = identifier not string, := <> .. operators.
+2a in running code). The scan loop is parameterised per language (JS_OPTS /
+RUST_OPTS) — one loop with hooks, never a third copy. The SQL/PL-SQL mode
+(Oracle dialect) followed: PL/SQL's block keywords ARE the XML name-matched
+tag family wearing keyword clothes — IF / LOOP / CASE / BEGIN open as '{'
+with the kind as interned value, and END IF is ONE '}' token (two keywords,
+one closer) name-matched to its opener. The keyword-vs-builtin split is the
+13e encoding rule's boundary case: keywords class 'keyword' (byte 'k'),
+well-known builtins class 'builtin' (byte 'B') — both pooled, per-item
+mnemonic bytes deferred (the same exercise Rust's keyword table below did).
+Dialects are a registry (SQL_DIALECTS): oracle implemented; mysql / mssql /
+postgres / duckdb foreseen as word-set + quoting entries, not scanner
+changes. Oracle lexical specifics: '' doubled-quote escape, q'[…]' q-quoting
+(another 2a parameterised end), "Quoted" = identifier not string, := <> ..
+operators.
+
+**Rust's per-keyword mnemonic table** (RUST_KEYWORDS) worked the alphabet
+budget in three tiers rather than falling back to one generic byte. Same
+lexeme AND same role as JS: reuse the JS byte outright (else/false/for/
+if/in/let/return/true/while/break/continue/const/async/await, plus static/
+super/try/typeof/yield whose Rust meaning drifts from JS's but the spelling
+is the mnemonic — the same call already made for Python's reused words).
+Different spelling, matching role: `fn` takes the function role's byte (same
+'f' as JS's own function keyword AND Python's `def` — one role, one byte,
+three languages); `self` takes the receiver role (JS's `this` byte). The
+remaining Rust-only concepts have no role to borrow, and the alphabet is
+otherwise fully claimed by JS's own keyword table — only three free,
+unambiguous first-letter fits were left (mut/pub/struct), so they took them;
+everything else (as/crate/dyn/enum/extern/impl/loop/match/mod/move/ref/
+Self/trait/type/use/where) took a 0x80+ block byte decoded back to its
+spelling by RUST_KW_LITERAL — the OP_LITERAL move, one tier down. The
+insight this forced: legible ASCII letters are the scarce resource here, not
+byte VALUES — 256 values is plenty for one language's keywords, so "run out
+of letters" means "use a block byte + a decode table," never "share a byte
+between two different roles." Left as plain IDENT on purpose: `union` (a
+weak/contextual keyword, special in only one position, the same treatment
+Python gives its soft `match`/`case`) and the reserved-for-future words that
+essentially never appear in real code (become, box, priv, unsized, …).
 
 JSON5 needed no new opts flags beyond narrowing JS_OPTS: object/array `{}[]`
 are the same char-matched bracket family as JS, `:`/`,` are already punct, and

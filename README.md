@@ -65,7 +65,7 @@ tfreq.js             token frequencies (class / op-role / keyword) for tuning
                      the byte allocation — the data the 13e rule consumes
 unilexer.js          ONE lexer, ONE tape: value pools + structural links in a
                      single pass; tag byte IS the mnemonic
-                     (JS, XML, Rust-lexical, Oracle SQL/PLSQL, Python, YAML,
+                     (JS, XML, Rust, Oracle SQL/PLSQL, Python, YAML,
                      JSON5 [also accepts plain JSON] — Python/YAML via the
                      indentation bracket family :{ }: )
 valuetape.js         §13b spike (historical; superseded by unilexer.js)
