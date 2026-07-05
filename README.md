@@ -42,6 +42,7 @@ node scan.js --outline 1 app.js :: folded breadth-first view (raise to peel)
 node sfdiff.js old.js new.js    :: subforest diff — whole units, not line deltas
 node tdump.js app.js            :: token dump (pool index/value; quiet whitespace)
 node tdump.js --signal app.js   :: significant tokens only; --full = revertible
+node tdump.js --outline 2 spec.json :: folded breadth-first view, any of the 7 modes
 node tfreq.js src\              :: token/operator-role frequencies over a tree
 node scan.js --help             :: full usage
 ```
@@ -59,6 +60,7 @@ bracket-scanner.js   milestone-1 reference: bracket-only scanner
 harvest.js           derive a lexical table from a *.tmLanguage.json grammar
 defuse.js            breadth-first def/use projection (rides unilexer.js)
 tdump.js             token dump: pool index/value pairs; full | brief | signal
+                     | outline (folded breadth-first view, any of the 7 modes)
 tfreq.js             token frequencies (class / op-role / keyword) for tuning
                      the byte allocation — the data the 13e rule consumes
 unilexer.js          ONE lexer, ONE tape: value pools + structural links in a

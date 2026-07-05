@@ -14,7 +14,25 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
-## Unreleased — JSON5 mode (also accepts plain JSON)
+## Unreleased — `tdump.js --outline`: breadth-first view over any of the 7 modes
+
+- Ported `scan.js`'s folded breadth-first outline (fold at depth n; a matched
+  span starting at depth n-1 collapses to one line via its jump pointer) onto
+  the unified tape, generalised across unilexer's THREE bracket families —
+  char-matched, name-matched (XML/SQL), indentation (Python/YAML) — with one
+  uniform test instead of three per-family byte lists: a token is an OPENER
+  iff it links FORWARD (`link(t) > t`). Trivia and bare structural punct
+  (`:`/`,`/`;`) are always dropped — separator noise once indentation already
+  shows the nesting.
+- Motivated by reading a real 675KB OpenAPI spec (a `oneOf` of 30 alternative
+  message-type schemas behind one generic POST endpoint) without a jq/XSLT
+  mental model: `--outline 9` collapsed the spec to exactly the sibling list
+  needed to see the 30 alternatives at a glance, each unexplored branch
+  folded to `{ … 620 … }` — proving the "list children at a depth, skip
+  whole subtrees via link before descending" idea from the JSON5 design note
+  as a real, reusable CLI view rather than a one-off script.
+
+## PR #36 — JSON5 mode (also accepts plain JSON) · 2026-07-05
 
 - `tokenizeJson5` is `tokenize()` narrowed, not a new scan loop: object/array
   `{}[]` are the same char-matched bracket family as JS, `:`/`,` are already
@@ -33,7 +51,7 @@ direct bytes for closed vocabularies, indirection only for real variation).
   (comments, unquoted keys, trailing commas, hex/leading-decimal numbers,
   mixed quoting); `tdump.js`/`tfreq.js` wired for `.json`/`.json5`/`.jsonc`.
 
-## PR #35 — `_tape()` retrofit onto the four older modes · 2026-06-12
+## PR #35 — `_tape()` retrofit onto the four older modes · 2026-07-05
 
 - `tokenize` (JS/Rust), `tokenizeXml`, and `tokenizeSql` each carried their own
   inline copy of the pool/grow/emit tape builder from before `_tape()` existed

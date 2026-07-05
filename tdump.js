@@ -50,6 +50,10 @@ OPTIONS
                    kind — quotes would be noise); whitespace as compact indent
                    deltas (+\\n, -\\n, +2\\n — sign first), quiet when unchanged.
       --signal     Significant tokens only — no whitespace, no comments.
+  -o, --outline <n>  Breadth-first view, folded at depth n (n >= 1): tokens at
+                   depth < n print; a matched span starting at depth n-1 folds
+                   to one line (\`{ … 12 … }\`) via its link. Trivia and bare
+                   punct (: , ;) are always dropped. Raise n to peel a layer.
   -l, --lang <l>   Force language: js | xml | rust | sql | py | yaml | json5.
                    Default: detect from the file
                    extension (.xml/.html/.htm/.svg -> xml, .rs -> rust,
@@ -161,19 +165,70 @@ function briefWs(lexeme, unit, state, isNl, nextIsIntraWs) {
   return JSON.stringify(lexeme);                // mixed — explicit
 }
 
-// ── the dump itself — a projection over the unchanged tape ───────────────────
-// Brief/signal show BARE values: the class column already implies the kind, so
-// quotes are noise (a string's own quotes are part of its lexeme and show
-// naturally). Full shows the exact source text JSON-escaped — that column
-// concatenates back to the original.
-function dumpTokens(src, mode = 'brief', lang = 'js') {
-  const u = lang === 'xml' ? new UniLexer().tokenizeXml(src)
+function tokenize(src, lang) {
+  return lang === 'xml' ? new UniLexer().tokenizeXml(src)
     : lang === 'rust' ? new UniLexer().tokenizeRust(src)
     : lang === 'sql' ? new UniLexer().tokenizeSql(src)
     : lang === 'py' ? new UniLexer().tokenizePy(src)
     : lang === 'yaml' ? new UniLexer().tokenizeYaml(src)
     : lang === 'json5' ? new UniLexer().tokenizeJson5(src)
     : new UniLexer().tokenize(src);
+}
+
+// The breadth-first viewer (mirrors scan.js's toOutline for the older tape,
+// generalised across unilexer's THREE bracket families — char-matched,
+// name-matched, indentation — via one uniform test: a token is an OPENER iff
+// it links FORWARD (link > its own index). No per-family byte lists needed.
+// Tokens at depth >= maxDepth are folded: a matched opener sitting exactly at
+// the fold boundary collapses its whole span to one line (`{ … 12 … }`) via
+// its link, O(1) per fold — unmatched openers are never folded (never guess
+// a missing close; they print open with a trailing `…?`, same as repairMap).
+// Trivia (ws/comment) and bare structural punct (: , ;) are always dropped —
+// pure separator noise once indentation already shows the nesting.
+function outlineLabel(u, t) {
+  const klass = u.classOf(t);
+  if (klass === KLASS.BRACKET) return u.mnemonicOf(t);
+  const mnem = u.mnemonicOf(t);
+  let lex = escapeNl(u.lexemeOf(t));
+  if (lex.length > 60) lex = lex.slice(0, 60) + '…';
+  return (!lex || lex === mnem) ? mnem : `${mnem} ${lex}`;
+}
+
+function outlineView(src, lang, maxDepth) {
+  const u = tokenize(src, lang);
+  const n = u.length;
+  const lines = [];
+  let t = 0;
+  while (t < n) {
+    const klass = u.classOf(t);
+    if (klass === KLASS.WS || klass === KLASS.COMMENT || klass === KLASS.PUNCT) { t++; continue; }
+    const d = u.depthOf(t);
+    if (d >= maxDepth) { t++; continue; }
+    const indent = '  '.repeat(d);
+    const link = u.linkOf(t);
+    const isOpener = link !== -1 && link > t;
+    if (isOpener && d === maxDepth - 1) {
+      const inner = link - t - 1;
+      const label = `${outlineLabel(u, t)}`;
+      const closeLabel = outlineLabel(u, link);
+      lines.push(inner <= 0 ? `${indent}${label}${closeLabel}` : `${indent}${label} … ${inner} … ${closeLabel}`);
+      t = link + 1;
+      continue;
+    }
+    const unmatched = link === -1 && (klass === KLASS.BRACKET || klass === KLASS.TAG);
+    lines.push(indent + outlineLabel(u, t) + (unmatched ? ' …?' : ''));
+    t++;
+  }
+  return `outline (folded at depth ${maxDepth}; raise to peel a layer):\n${lines.join('\n')}`;
+}
+
+// ── the dump itself — a projection over the unchanged tape ───────────────────
+// Brief/signal show BARE values: the class column already implies the kind, so
+// quotes are noise (a string's own quotes are part of its lexeme and show
+// naturally). Full shows the exact source text JSON-escaped — that column
+// concatenates back to the original.
+function dumpTokens(src, mode = 'brief', lang = 'js') {
+  const u = tokenize(src, lang);
   const unit = detectIndentUnit(src);
   const state = { units: 0, afterNl: true };   // file start counts as a line start
   const lines = [];
@@ -222,6 +277,7 @@ function main() {
         full:    { type: 'boolean' },
         brief:   { type: 'boolean' },
         signal:  { type: 'boolean' },
+        outline: { type: 'string',  short: 'o' },
         lang:    { type: 'string',  short: 'l' },
         help:    { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'V' },
@@ -246,12 +302,18 @@ function main() {
       : ['.json', '.json5', '.jsonc'].includes(ext) ? 'json5'
       : 'js';
   }
+  let outlineDepth = 0;
+  if (values.outline !== undefined) {
+    outlineDepth = parseInt(values.outline, 10);
+    if (!Number.isInteger(outlineDepth) || outlineDepth < 1) fail(`invalid --outline '${values.outline}' (expected a depth >= 1)`);
+  }
+
   let src;
   try {
     src = positionals[0] === '-' ? readFileSync(0, 'utf8') : readFileSync(positionals[0], 'utf8');
   } catch { fail(`cannot read '${positionals[0]}'`); }
 
-  process.stdout.write(dumpTokens(src, mode, lang) + '\n');
+  process.stdout.write((outlineDepth ? outlineView(src, lang, outlineDepth) : dumpTokens(src, mode, lang)) + '\n');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

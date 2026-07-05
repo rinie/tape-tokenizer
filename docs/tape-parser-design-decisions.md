@@ -608,6 +608,17 @@ comments forward). **Association is a view, not a fact of the tape.**
 - `--signal` — significant tokens only; trivia omitted *from the view* (it is
   still on the tape — a view, not a loss). Tape indices stay stable across
   views.
+- `--outline <n>` — a fourth projection, the breadth-first one: `scan.js`'s
+  folded outline ported onto the unified tape and generalised across all
+  three bracket families (char-matched, name-matched, indentation) with a
+  single test — a token is an OPENER iff it links FORWARD — instead of a
+  byte list per family. Trivia and bare structural punct are dropped; a
+  matched span starting at the fold boundary collapses to one line via its
+  link, unmatched openers print with a trailing `…?` (never guessed closed).
+  This is the "list children at a depth, skip subtrees via link before
+  descending" idea from the JSON5 note above, made into a real reusable
+  view: read a large JSON/OpenAPI spec sibling-by-sibling instead of
+  eye-matching braces or writing a jq path.
 
 Each row is `[tape index] tag-char class#poolIndex value` — the index/value
 pair listed next to the lexer, with interned classes visibly reusing pool
