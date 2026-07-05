@@ -36,6 +36,7 @@
 // tokenizer.js (defuse) and lexical-scanner.js (scan/validate — seams, cpp,
 // XML, multi-language tables) are migration targets, not yet migrated.
 
+import { readFileSync } from 'node:fs';
 import { T, KEYWORDS, OPS, OP_LITERAL, OP_CONCAT, SQL_OP_ROLES } from './token-tags.js';
 
 // ── classes (coarse, derived from the tag byte) ──────────────────────────────
@@ -72,6 +73,15 @@ const TAG_DEDENT  = 0x0F;     // SI (shift in)   — DEDENT: a level closed.
 const TAG_COMMENT = 0x23;     // '#'  comment without newlines (// or one-line /* */)
 const TAG_COMMENT_ML = 0x11;  // multi-line comment — newlines stay INSIDE the
                               // token; renders as C(n), n = newlines contained
+const T_EXTKW = 0xC3;         // imported/extended keyword (runtime CSV-sourced
+                              // vocabulary) — ONE shared byte regardless of how
+                              // many words the CSV lists; class IDENT (keywords,
+                              // imported keywords, and identifiers are the same
+                              // lexical shape, so they're interned into the
+                              // SAME pool). The mnemonic shows a stable 'id{n}'
+                              // (n = the word's position among the CSV's
+                              // non-reused entries) instead of the byte itself —
+                              // see loadKeywordCsv() below.
 
 // tag byte → class, built once from token-tags
 const TAG_CLASS = new Uint8Array(256).fill(KLASS.PUNCT);
@@ -225,24 +235,63 @@ const PY_KEYWORDS = new Map([
 for (const [word, byte] of PY_KEYWORDS) if (byte >= 0x80) KW_LITERAL[byte] = word;
 for (const byte of PY_KEYWORDS.values()) TAG_CLASS_PY[byte] = KLASS.KEYWORD;
 
+// Runtime-loaded keyword vocabulary: the CSV is the source of truth, so
+// adding a SQL keyword is a one-line edit to a data file, never a code
+// change. One word per line; blank lines and '#'-prefixed comment lines are
+// ignored. Resolved relative to THIS file (not the caller's cwd), the same
+// harvest.js precedent of deriving a table from an external source.
+function loadKeywordCsv(relPath) {
+  const text = readFileSync(new URL(relPath, import.meta.url), 'utf8');
+  return text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+}
+
+const SQL_ORACLE_KEYWORDS = loadKeywordCsv('./sql-keywords-oracle.csv');
+
+// A handful of these words already have a genuinely better byte elsewhere in
+// the project — same spelling, close-enough role (the tier-1/tier-2 move
+// Rust and Python's own tables made). Kept EXPLICIT and hand-curated, not
+// auto-discovered by scanning the other tables at runtime: auto-discovery
+// would mean editing Python's or Rust's table could silently change SQL's
+// byte assignments later — the opposite of the stability this is for.
+const SQL_KEYWORD_REUSE = new Map([
+  // same lexeme, JS's own byte
+  ['delete', KEYWORDS.get('delete')], ['null', KEYWORDS.get('null')],
+  ['else', KEYWORDS.get('else')], ['function', KEYWORDS.get('function')],
+  ['return', KEYWORDS.get('return')], ['while', KEYWORDS.get('while')],
+  ['for', KEYWORDS.get('for')], ['in', KEYWORDS.get('in')],
+  ['default', KEYWORDS.get('default')], ['true', KEYWORDS.get('true')],
+  ['false', KEYWORDS.get('false')],
+  // same lexeme, Python's role byte (literal values — Python's own table is
+  // defined earlier in this file, cross-referenced here by comment)
+  ['and', 0xB7], ['or', 0xB8], ['not', 0xB9], ['is', 0xBA], ['with', 0xBC],
+  ['raise', 0x68],   // 'h', the throw role (JS's KW_THROW, same as Python's raise)
+  // same lexeme, Rust's role byte
+  ['as', 0xA7], ['where', 0xB6], ['type', 0xB4],
+]);
+for (const byte of SQL_KEYWORD_REUSE.values()) TAG_CLASS_SQL[byte] = KLASS.KEYWORD;
+TAG_CLASS_SQL[T_EXTKW] = KLASS.IDENT;   // imported keyword — same class as IDENT
+
+// Every OTHER CSV word (no reuse candidate) shares T_EXTKW's one byte;
+// what word it IS comes from the interned pool, same as any identifier. The
+// mnemonic label is this word's STABLE position among the non-reused CSV
+// entries — appending word #87 to the CSV is just 'id87'; it never
+// renumbers id1..id86, and inserting a word only renumbers what follows it
+// (append, don't insert, to keep ids fully stable across edits).
+const SQL_EXTKW_INDEX = new Map();
+{
+  let nextId = 1;
+  for (const w of SQL_ORACLE_KEYWORDS) {
+    if (SQL_KEYWORD_REUSE.has(w) || SQL_EXTKW_INDEX.has(w)) continue;
+    SQL_EXTKW_INDEX.set(w, nextId++);
+  }
+}
+
 const SQL_DIALECTS = {
   oracle: {
     // block structure: opener kinds; 'end' is handled specially (multi-word closer)
     openers: new Set(['if', 'loop', 'case', 'begin']),
     opRoles: SQL_OP_ROLES,   // spelling -> role byte (:= = <> != ^= ||)
-    keywords: new Set([
-      'select', 'from', 'where', 'insert', 'update', 'delete', 'into', 'values',
-      'set', 'and', 'or', 'not', 'null', 'is', 'as', 'then', 'elsif', 'else',
-      'when', 'declare', 'procedure', 'function', 'package', 'body', 'return',
-      'cursor', 'type', 'exception', 'raise', 'exit', 'while', 'for', 'in',
-      'commit', 'rollback', 'savepoint', 'grant', 'revoke', 'create', 'alter',
-      'drop', 'replace', 'table', 'view', 'index', 'trigger', 'sequence',
-      'union', 'all', 'distinct', 'group', 'by', 'having', 'order', 'asc',
-      'desc', 'between', 'like', 'exists', 'join', 'left', 'right', 'inner',
-      'outer', 'full', 'cross', 'on', 'using', 'connect', 'start', 'with',
-      'fetch', 'open', 'close', 'bulk', 'collect', 'forall', 'pragma',
-      'constant', 'default', 'out', 'nocopy', 'rownum', 'dual', 'true', 'false',
-    ]),
+    keywords: new Set(SQL_ORACLE_KEYWORDS),
     builtins: new Set([
       'nvl', 'nvl2', 'coalesce', 'decode', 'nullif', 'substr', 'instr',
       'length', 'upper', 'lower', 'initcap', 'trim', 'ltrim', 'rtrim', 'lpad',
@@ -1146,8 +1195,12 @@ class UniLexer {
         const calls = src.charCodeAt(p) === 0x28;
         if (d.builtins.has(lower) && (calls || !d.keywords.has(lower))) {
           emit(0x42, KLASS.BUILTIN, word, start, depth);             // B
+        } else if (SQL_KEYWORD_REUSE.has(lower)) {
+          emit(SQL_KEYWORD_REUSE.get(lower), KLASS.KEYWORD, word, start, depth);
         } else if (d.keywords.has(lower)) {
-          emit(0x6B, KLASS.KEYWORD, word, start, depth);             // k
+          // imported keyword — treated as an identifier (same lexical shape,
+          // same interned pool), mnemonic decoded via SQL_EXTKW_INDEX
+          emit(T_EXTKW, KLASS.IDENT, word, start, depth);
         } else {
           emit(T.IDENT, KLASS.IDENT, word, start, depth);            // I
         }
@@ -1370,6 +1423,10 @@ class UniLexer {
       }
       if (classTable[b] === KLASS.OP) return OP_LITERAL[b] ?? lexemeOf(t);
       if (classTable[b] === KLASS.KEYWORD && b >= 0x80) return KW_LITERAL[b] ?? lexemeOf(t);
+      if (b === T_EXTKW) {                                    // imported keyword —
+        const idx = SQL_EXTKW_INDEX.get(lexemeOf(t).toLowerCase());  // stable CSV-position id
+        return idx !== undefined ? `id${idx}` : 'I';
+      }
       return String.fromCharCode(b);
     };
 

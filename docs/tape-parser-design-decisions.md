@@ -606,6 +606,42 @@ assert/elif/except/pass) took a fresh block byte past Rust's highest
 the discipline held across two languages' worth of pressure on the same
 finite alphabet, exactly the promise the operator ROLE registry made first.
 
+**SQL's keyword table changed the SHAPE of the exercise, not just its
+content** (owner's call, after investigating a CSV-driven design). By the
+time SQL's turn came, 86 Oracle keywords needed bytes and the alphabet was
+already gone — cross-checking against every other table found only 21 exact
+spelling matches (kept EXPLICIT and hand-curated in `SQL_KEYWORD_REUSE`,
+never auto-discovered by scanning the other tables at runtime — auto-reuse
+would mean editing Python's or Rust's table could silently change SQL's
+bytes later, the opposite of stability); the remaining ~65 would all be
+equally-illegible block bytes regardless of which specific values they got,
+since there was no meaningful mnemonic left to assign — hand-picking had
+stopped buying anything.
+
+That is precisely the case for leaning on the insight already latent in
+`13e`: **a keyword and an identifier are the same lexical shape** — a
+reserved WORD is only special because a table says so, not because it looks
+different. So the "no free letter" tier for SQL doesn't take individual
+block bytes at all: every non-reused SQL keyword shares ONE byte
+(`T_EXTKW`), classed as IDENT and interned into the SAME pool as any other
+identifier — `tfreq`'s identifier listing picks them up for free, with zero
+tooling change. What word a given `T_EXTKW` token IS comes from the pool,
+exactly like a plain identifier; the mnemonic column shows a stable `id{n}`
+— `n` is the word's position among the CSV's non-reused entries, not a
+per-file pool index, so it never depends on what else appears in whatever
+file is being scanned.
+
+The vocabulary itself is now runtime-loaded from `sql-keywords-oracle.csv`
+(`loadKeywordCsv()`, resolved relative to `unilexer.js` via `import.meta.url`
+— the same "derive a table from an external source" move `harvest.js`
+already makes for TextMate grammars, just for a keyword list instead of a
+grammar file). Appending a keyword to the CSV is a one-line data edit, needs
+no code change, and is genuinely unlimited — it will never again run into
+"out of bytes," because the byte was already spent once, up front, forever.
+The one stability rule this asks of the CSV: APPEND new words, don't insert
+them in the middle — inserting shifts every id after it, while appending
+only ever adds a new highest id.
+
 JSON5 needed no new opts flags beyond narrowing JS_OPTS: object/array `{}[]`
 are the same char-matched bracket family as JS, `:`/`,` are already punct, and
 `true`/`false`/`null` reuse JS's own keyword bytes (T/u/0) via a 3-entry
