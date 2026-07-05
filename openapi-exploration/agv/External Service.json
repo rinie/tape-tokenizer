@@ -1,0 +1,154 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "External Service",
+    "version": "v1.0",
+    "description": "Describes the operations that needs to be implemented at the external system to receive notifications for subscriptions",
+    "contact": {
+      "name": "TMHLS"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://127.0.0.1:5001"
+    }
+  ],
+  "paths": {
+    "/events": {
+      "post": {
+        "summary": "",
+        "operationId": "post-events",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request\n\nThe event will not be resent and an investigation is necessary to see why the service did not like the request."
+          },
+          "401": {
+            "description": "Unauthorized\n\nThe event will not be resent and an investigation is necessary to see why T-ONE is not authenitcating itself correctly."
+          },
+          "403": {
+            "description": "Forbidden\n\nThe event will not be resent and an investigation is necessary to see why T-ONE does not have access to the endpoint."
+          },
+          "500": {
+            "description": "Internal Server Error\n\nThe event will not be resent and an investigation is necessary to see why the service did not successfully process the request."
+          },
+          "503": {
+            "description": "Service Unavailable\n\nThe event will be resent after a short delay."
+          }
+        },
+        "description": "Each event published from T-ONE will be sent to this endpoint.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Event"
+              },
+              "examples": {
+                "Endpoint Verification": {
+                  "$ref": "#/components/examples/Verification-Example"
+                },
+                "Transport state updated": {
+                  "$ref": "#/components/examples/Transport-State-Updated"
+                }
+              }
+            }
+          },
+          "description": "Contains the event information"
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceparent"
+          }
+        ],
+        "tags": [
+          "Events"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Event": {
+        "title": "Event",
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "Subscription unique sequential counter intended for the subscriber to detect missed messages."
+          },
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "Transports",
+              "Inventory",
+              "Events"
+            ]
+          },
+          "eventType": {
+            "type": "string",
+            "description": "The possible event types are described in the specification. An unknown event type should be accepted and ignored by the external service."
+          },
+          "eventData": {
+            "type": "object",
+            "description": "Contains information about the event. Most event data contains an ID to be able to recognize the resource the event is all about.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "index",
+          "sourceType",
+          "eventType"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "basic": {
+        "type": "http",
+        "scheme": "basic",
+        "description": "T-ONE can authenticate itself with basic authentication if needed, but it's completely optional. The external service should include the basic authentication settings necessary when creating a subscription."
+      }
+    },
+    "responses": {},
+    "parameters": {
+      "traceparent": {
+        "name": "traceparent",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "The traceparent header represents the incoming request in a tracing system in a common format, W3C Trace Context"
+      }
+    },
+    "examples": {
+      "Verification-Example": {
+        "value": {
+          "sourceType": "Transports",
+          "eventType": "Verification",
+          "eventData": null
+        }
+      },
+      "Transport-State-Updated": {
+        "value": {
+          "sourceType": "Transports",
+          "eventType": "StateUpdated",
+          "eventData": {
+            "id": "507f1f77bcf86cd799439012",
+            "state": {
+              "code": "Ongoing",
+              "reason": null,
+              "data": null
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Events"
+    }
+  ]
+}

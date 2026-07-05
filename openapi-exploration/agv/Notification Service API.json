@@ -1,0 +1,753 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Notification Service",
+    "description": "T-ONE - Notification Service Integration Specification",
+    "version": "1.0",
+    "contact": {
+      "name": "TMHLS"
+    }
+  },
+  "paths": {
+    "/api/v1/subscriptions": {
+      "get": {
+        "summary": "Get subscriptions",
+        "tags": [
+          "Subscriptions"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Subscription"
+                  }
+                },
+                "examples": {
+                  "Existing subscription for transport events": {
+                    "value": [
+                      {
+                        "id": "507f1f77bcf86cd799439011",
+                        "endpoint": "http://localhost:5001/api/v1/notifications/transports",
+                        "sourceType": "Transports",
+                        "authentication": {
+                          "credentials": "ZGVtbzpwQDU1dzByZA=="
+                        },
+                        "createdDateTime": "2020-11-26T14:00:00.000Z",
+                        "lastModifiedDateTime": "2020-11-26T14:00:00.000Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "get-api-v1-subscriptions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "description": "Returns all the existing subscriptions in the system."
+      },
+      "post": {
+        "summary": "Create a new subscription",
+        "operationId": "post-api-v1-subscriptions",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                },
+                "examples": {
+                  "Subscription for transport events": {
+                    "value": {
+                      "id": "507f1f77bcf86cd799439011",
+                      "sourceType": "Transports",
+                      "endpoint": "http://localhost:5001/api/v1/notifications/transports",
+                      "authentication": {
+                        "credentials": "ZGVtbzpwQDU1dzByZA=="
+                      },
+                      "createdDateTime": "2020-11-26T14:00:00.000Z",
+                      "lastModifiedDateTime": "2020-11-26T14:00:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "headers": {},
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "examples": {
+                  "Source type is missing from request": {
+                    "value": {
+                      "errors": {
+                        "Subscription": [
+                          "The SourceType field is required."
+                        ]
+                      },
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                      "title": "One or more validation errors occurred.",
+                      "status": 400,
+                      "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Conflict : Subscription already exists for the given source type and endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "Conflict": {
+                    "value": {
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                      "title": "Conflict",
+                      "status": 409,
+                      "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Subscription"
+              },
+              "examples": {
+                "Subscribe for transport events": {
+                  "value": {
+                    "sourceType": "Transports",
+                    "endpoint": "http://localhost:5001/api/v1/notifications/transports",
+                    "authentication": {
+                      "credentials": "ZGVtbzpwQDU1dzByZA=="
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "description": "The subscription to create"
+        },
+        "description": "Creates a new subscription",
+        "tags": [
+          "Subscriptions"
+        ]
+      }
+    },
+    "/api/v1/subscriptions/{id}": {
+      "parameters": [
+        {
+          "schema": {
+            "type": "string",
+            "example": "507f1f77bcf86cd799439011",
+            "minLength": 24,
+            "maxLength": 24
+          },
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the subscription"
+        }
+      ],
+      "get": {
+        "summary": "Get subscription information",
+        "tags": [
+          "Subscriptions"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                },
+                "examples": {
+                  "Transport event subscription": {
+                    "value": {
+                      "id": "507f1f77bcf86cd799439011",
+                      "endpoint": "http://example.com",
+                      "sourceType": "Transports",
+                      "authentication": {
+                        "credentials": "string"
+                      },
+                      "createdDateTime": "2019-08-24T14:15:22Z",
+                      "lastModifiedDateTime": "2019-08-24T14:15:22Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "get-api-v1-subscriptions-id",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "description": "Retrieves information about a single subscription based on the ID",
+        "x-internal": false
+      },
+      "patch": {
+        "summary": "Update an existing subscription",
+        "operationId": "patch-api-v1-subscriptions-id",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                },
+                "examples": {
+                  "Subscription after update": {
+                    "value": {
+                      "id": "507f1f77bcf86cd799439011",
+                      "endpoint": "http://localhost:5001/v1/transports/notifications",
+                      "sourceType": "Transports",
+                      "authentication": {
+                        "credentials": "dG9uZTpwYXNzd29yZA=="
+                      },
+                      "createdDateTime": "2019-08-24T14:15:22Z",
+                      "lastModifiedDateTime": "2019-08-24T14:15:22Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "examples": {
+                  "The updated endpoint cannot be reached": {
+                    "value": {
+                      "errors": {
+                        "Verify Endpoint: http://127.0.0.1:5001/api/v1/inventory/notifications": [
+                          "Connection refused (127.0.0.1:5001)"
+                        ]
+                      },
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                      "title": "One or more validation errors occurred.",
+                      "status": 400,
+                      "traceId": "00-2da7a2600904e4449a3f45520d19aec1-a7c2c752d7cc4d41-00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PatchOperation"
+                }
+              },
+              "examples": {
+                "Change endpoint and authentication": {
+                  "value": [
+                    {
+                      "op": "replace",
+                      "path": "/endpoint",
+                      "value": "http://localhost:5001/v1/transports/notifications"
+                    },
+                    {
+                      "op": "replace",
+                      "path": "/authentication",
+                      "value": {
+                        "credentials": "dG9uZTpwYXNzd29yZA=="
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "description": "The JsonPatch document describing the changes to apply."
+        },
+        "description": "Updates an existing subscription\n\n**Supported Parameters**\n- Endpoint\n- Authentication",
+        "tags": [
+          "Subscriptions"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Cancel a subscription",
+        "operationId": "delete-api-v1-subscriptions-id",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          }
+        },
+        "description": "Cancels a subscription",
+        "tags": [
+          "Subscriptions"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PatchOperation": {
+        "title": "PatchOperation",
+        "required": [
+          "op",
+          "path"
+        ],
+        "type": "object",
+        "allOf": [
+          {
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "A JSON Pointer path."
+              }
+            }
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "op",
+              "value"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "add",
+                  "replace",
+                  "test"
+                ],
+                "type": "string",
+                "description": "The operation to perform."
+              },
+              "value": {
+                "description": "The value to add, replace of test."
+              }
+            }
+          },
+          {
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "remove"
+                ],
+                "type": "string",
+                "description": "The operation to perform."
+              }
+            }
+          },
+          {
+            "required": [
+              "op",
+              "from"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "move",
+                  "copy"
+                ],
+                "type": "string",
+                "description": "The operation to perform"
+              },
+              "from": {
+                "type": "string",
+                "description": "A JSON Pointer path pointing to the location to move/copy from."
+              }
+            }
+          }
+        ],
+        "externalDocs": {
+          "description": "JSON Patch Documentation",
+          "url": "https://jsonpatch.com"
+        },
+        "x-examples": {},
+        "description": ""
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {},
+        "title": "",
+        "description": "Details about problem with the request or response"
+      },
+      "ValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {}
+      },
+      "Subscription": {
+        "description": "Represents a subscription",
+        "type": "object",
+        "x-examples": {},
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "507f1f77bcf86cd799439011",
+            "readOnly": true
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "Transports",
+              "Inventory",
+              "Events"
+            ]
+          },
+          "authentication": {
+            "type": "object",
+            "properties": {
+              "credentials": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "credentials"
+            ]
+          },
+          "createdDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "lastModifiedDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "endpoint",
+          "sourceType"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "OpenID": {
+        "type": "openIdConnect",
+        "openIdConnectUrl": "/auth/realms/T-ONE/.well-known/openid-configuration"
+      },
+      "oauth2": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "/auth/realms/T-ONE/protocol/openid-connect/token",
+            "scopes": {
+              "public.notification": "Required for managing the notifications"
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Unauthorized": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7235#section-3.1",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Forbidden": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.3",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Internal-Server-Error": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Internal Server Error": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+                  "title": "An error occurred while processing your request.",
+                  "status": 500,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Service-Unavailable": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Service Unavailable": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.6.4",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Not-Found": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Not Found": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+                  "title": "Not Found",
+                  "status": 404,
+                  "traceId": "00-98a05ea57962d843ac4360fdf9984815-5197495a09b0e340-00"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "Traceparent": {
+        "name": "Traceparent",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "example": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          "pattern": "^(?<version>\\d{2})-(?<traceId>[a-f0-9]{32})-(?<parentId>[a-f0-9]{16})-(?<traceFlags>\\d{2})$"
+        },
+        "description": "The traceparent header represents the incoming request in a tracing system in a common format, W3C Trace Context"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://127.0.0.1",
+      "description": ""
+    }
+  ],
+  "tags": [
+    {
+      "name": "Subscriptions"
+    }
+  ],
+  "security": [
+    {
+      "oauth2": [
+        "public.notification"
+      ]
+    }
+  ]
+}

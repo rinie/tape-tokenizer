@@ -1,0 +1,1382 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Transport Service",
+    "description": "T-ONE - Transport Service Integration Specification",
+    "version": "1.0",
+    "contact": {
+      "name": "TMHLS"
+    }
+  },
+  "paths": {
+    "/api/v1/transports/{id}/currentinstruction": {
+      "get": {
+        "tags": [
+          "CurrentInstruction"
+        ],
+        "summary": "Get the current instruction of a transport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The ID of the transport.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Instruction"
+                },
+                "examples": {
+                  "Instruction to pick up a load": {
+                    "value": {
+                      "locationName": "Location A",
+                      "action": "PickUp",
+                      "loads": [
+                        [
+                          "507f1f77bcf86cd799439011"
+                        ]
+                      ],
+                      "state": {
+                        "code": "Pending"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content : No instruction to execute for the transport."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "410": {
+            "description": "Gone : The transport is already finished and no instructions are left to execute.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "Transport already finished": {
+                    "value": {
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.9",
+                      "title": "Gone",
+                      "status": 410,
+                      "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "get-api-v1-transports-id-currentinstruction",
+        "description": "Retrieves information about the current instruction of the transport based on the ID"
+      },
+      "parameters": [
+        {
+          "schema": {
+            "type": "string"
+          },
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the transport"
+        }
+      ]
+    },
+    "/api/v1/transports": {
+      "get": {
+        "tags": [
+          "Transports"
+        ],
+        "summary": "Get transports",
+        "parameters": [
+          {
+            "name": "Ids",
+            "in": "query",
+            "description": "Only include transports with IDs specified in this array.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true,
+              "minItems": 0
+            }
+          },
+          {
+            "name": "ExternalTransportIds",
+            "in": "query",
+            "description": "Only include transports with external identifiers specified in this array.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true,
+              "minItems": 0
+            }
+          },
+          {
+            "name": "MinPriority",
+            "in": "query",
+            "description": "Only include transports with a priority equal or greater than the specified value.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0,
+              "maximum": 99
+            }
+          },
+          {
+            "name": "MaxPriority",
+            "in": "query",
+            "description": "Only include transports with a priority equal or less than the specified value.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0,
+              "maximum": 99
+            }
+          },
+          {
+            "name": "Vehicles",
+            "in": "query",
+            "description": "Only include transports associated with a vehicle specified in this array.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 0,
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "States",
+            "in": "query",
+            "description": "Only include transports with a state code specified in this array.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "Pending",
+                  "Ongoing",
+                  "Waiting",
+                  "Completed",
+                  "Aborted",
+                  "Rejected",
+                  "Error"
+                ],
+                "type": "string",
+                "description": "Describes the possible states of a transport."
+              },
+              "minItems": 0,
+              "uniqueItems": true
+            }
+          },
+          {
+            "name": "AfterCreatedDateTime",
+            "in": "query",
+            "description": "Only include transports that have a Created Date Time equal or greater than the specified value.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "BeforeCreatedDateTime",
+            "in": "query",
+            "description": "Only include transports that have a Created Date Time equal or less than the specified value.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "AfterFinishedDateTime",
+            "in": "query",
+            "description": "Only include transports that have a Finished Date Time equal or greater than the specified value.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "BeforeFinishedDateTime",
+            "in": "query",
+            "description": "Only include transports that have a Finished Date time equal or less than the specified value.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Transport"
+                  }
+                },
+                "examples": {
+                  "Array of transports": {
+                    "value": [
+                      {
+                        "id": "507f1f77bcf86cd799439011",
+                        "externalTransportId": "externalIdentifier",
+                        "metadata": null,
+                        "priority": 3,
+                        "dueTime": "2020-10-27T10:50:00.000Z",
+                        "currentInstruction": 0,
+                        "instructions": [
+                          {
+                            "locationName": "C-1",
+                            "action": "None",
+                            "loads": [
+                              [
+                                "407f1f77bcf86cd799439012"
+                              ]
+                            ],
+                            "state": {
+                              "code": "Pending",
+                              "reason": null,
+                              "data": null
+                            }
+                          },
+                          {
+                            "locationName": "A",
+                            "action": "PickUp",
+                            "loads": [
+                              [
+                                "407f1f77bcf86cd799439012"
+                              ]
+                            ],
+                            "state": {
+                              "code": "Pending",
+                              "reason": null,
+                              "data": null
+                            }
+                          },
+                          {
+                            "locationName": "B",
+                            "action": "DropOff",
+                            "loads": [
+                              [
+                                "407f1f77bcf86cd799439012"
+                              ]
+                            ],
+                            "state": {
+                              "code": "Pending",
+                              "reason": null,
+                              "data": null
+                            }
+                          }
+                        ],
+                        "vehicles": [
+                          {
+                            "name": "AGV 13"
+                          }
+                        ],
+                        "abortRequested": false,
+                        "state": {
+                          "code": "Ongoing",
+                          "reason": null,
+                          "data": null
+                        },
+                        "createdDateTime": "2020-10-27T10:40:00.000Z",
+                        "startedDateTime": "2020-10-27T10:43:00.000Z",
+                        "finishedDateTime": null,
+                        "lastModifiedDateTime": "2020-10-27T10:43:00.000Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "get-api-v1-transports",
+        "description": "Returns all the existing transports in the system matching the query."
+      },
+      "post": {
+        "tags": [
+          "Transports"
+        ],
+        "summary": "Creates a new transport.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Request-Id"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "requestBody": {
+          "description": "The transport to create",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Transport"
+              },
+              "examples": {
+                "Create a transport to move a load from A to B": {
+                  "value": {
+                    "externalTransportId": "external-identifier",
+                    "priority": 1,
+                    "dueTime": "2020-10-27T15:00:00.000Z",
+                    "instructions": [
+                      {
+                        "locationName": "A",
+                        "action": "PickUp",
+                        "loads": [
+                          [
+                            "407f1f77bcf86cd799439012"
+                          ]
+                        ]
+                      },
+                      {
+                        "locationName": "B",
+                        "action": "DropOff",
+                        "loads": [
+                          [
+                            "407f1f77bcf86cd799439012"
+                          ]
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transport"
+                },
+                "examples": {
+                  "The newly created transport": {
+                    "value": {
+                      "id": "507f1f77bcf86cd799439011",
+                      "externalTransportId": "external-identifier",
+                      "metadata": null,
+                      "priority": 1,
+                      "dueTime": "2020-10-27T15:00:00.000Z",
+                      "currentInstruction": 0,
+                      "instructions": [
+                        {
+                          "locationName": "A",
+                          "action": "PickUp",
+                          "loads": [
+                            [
+                              "407f1f77bcf86cd799439012"
+                            ]
+                          ],
+                          "state": {
+                            "code": "Pending",
+                            "reason": null,
+                            "data": null
+                          }
+                        },
+                        {
+                          "locationName": "B",
+                          "action": "DropOff",
+                          "loads": [
+                            [
+                              "407f1f77bcf86cd799439012"
+                            ]
+                          ],
+                          "state": {
+                            "code": "Pending",
+                            "reason": null,
+                            "data": null
+                          }
+                        }
+                      ],
+                      "vehicles": [],
+                      "abortRequested": false,
+                      "state": {
+                        "code": "Pending"
+                      },
+                      "createdDateTime": "2020-10-27T10:40:00.000Z",
+                      "lastModifiedDateTime": "2020-10-27T10:40:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "examples": {
+                  "Forgot to specify a load ID": {
+                    "value": {
+                      "errors": {
+                        "Instruction[0].Loads[0]": [
+                          "The field Loads[0] must be an array type with a minimum and maximum length of '1'."
+                        ]
+                      },
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                      "title": "One or more validation errors occurred.",
+                      "status": 400,
+                      "traceId": "00-f8b1ce1398dc9f4dab765371a4272440-a84980c10a99f545-00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "post-api-v1-transports",
+        "description": "Creates a new transport to move a load"
+      }
+    },
+    "/api/v1/transports/{id}": {
+      "get": {
+        "tags": [
+          "Transports"
+        ],
+        "summary": "Get Transport Information",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The ID of the transport.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transport"
+                },
+                "examples": {
+                  "Transport Information": {
+                    "value": {
+                      "id": "507f1f77bcf86cd799439011",
+                      "externalTransportId": "externalIdentifier",
+                      "metadata": null,
+                      "priority": 3,
+                      "dueTime": "2020-10-27T10:50:00.000Z",
+                      "currentInstruction": 0,
+                      "instructions": [
+                        {
+                          "locationName": "C-1",
+                          "action": "None",
+                          "loads": [
+                            [
+                              "407f1f77bcf86cd799439012"
+                            ]
+                          ],
+                          "state": {
+                            "code": "Pending",
+                            "reason": null,
+                            "data": null
+                          }
+                        },
+                        {
+                          "locationName": "A",
+                          "action": "PickUp",
+                          "loads": [
+                            [
+                              "407f1f77bcf86cd799439012"
+                            ]
+                          ],
+                          "state": {
+                            "code": "Pending",
+                            "reason": null,
+                            "data": null
+                          }
+                        },
+                        {
+                          "locationName": "B",
+                          "action": "DropOff",
+                          "loads": [
+                            [
+                              "407f1f77bcf86cd799439012"
+                            ]
+                          ],
+                          "state": {
+                            "code": "Pending",
+                            "reason": null,
+                            "data": null
+                          }
+                        }
+                      ],
+                      "vehicles": [
+                        {
+                          "name": "AGV 13"
+                        }
+                      ],
+                      "abortRequested": false,
+                      "state": {
+                        "code": "Ongoing",
+                        "reason": null,
+                        "data": null
+                      },
+                      "createdDateTime": "2020-10-27T10:40:00.000Z",
+                      "startedDateTime": "2020-10-27T10:43:00.000Z",
+                      "finishedDateTime": null,
+                      "lastModifiedDateTime": "2020-10-27T10:43:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "get-api-v1-transports-id",
+        "description": "Retrieves information about a single transport based on the ID"
+      },
+      "patch": {
+        "tags": [
+          "Transports"
+        ],
+        "summary": "Update transport information",
+        "description": "Updates the information about an existing transport.\n\n**Supported Parameters**\n- Priority\n- Due Time\n- Instructions\n  - An instruction can only be inserted/added after the current instruction.\n  - An instruction can only be modified if it has not already been executed or is being executed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The ID of the transport to update.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Request-Id"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "requestBody": {
+          "description": "The document describing the changes to apply.",
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PatchOperation"
+                }
+              },
+              "examples": {
+                "Change priority and append new instruction": {
+                  "value": [
+                    {
+                      "op": "replace",
+                      "path": "/priority",
+                      "value": 20
+                    },
+                    {
+                      "op": "add",
+                      "path": "/instructions/-",
+                      "value": {
+                        "locationName": "location-name",
+                        "action": "None",
+                        "loads": [
+                          [
+                            "407f1f77bcf86cd799439012"
+                          ]
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transport"
+                },
+                "examples": {
+                  "The transport after the update": {
+                    "value": {
+                      "id": "507f1f77bcf86cd799439011",
+                      "externalTransportId": "string",
+                      "priority": 0,
+                      "dueTime": "2019-08-24T14:15:22Z",
+                      "currentInstruction": 0,
+                      "instructions": [
+                        {
+                          "locationName": "string",
+                          "action": "None",
+                          "loads": [
+                            [
+                              "507f1f77bcf86cd799439011"
+                            ]
+                          ],
+                          "state": {
+                            "code": "Pending",
+                            "reason": "string",
+                            "data": {
+                              "property1": "string",
+                              "property2": "string"
+                            }
+                          }
+                        }
+                      ],
+                      "metadata": {
+                        "property1": "string",
+                        "property2": "string"
+                      },
+                      "vehicles": [
+                        {
+                          "name": "string"
+                        }
+                      ],
+                      "abortRequested": false,
+                      "state": {
+                        "code": "Pending",
+                        "reason": "string",
+                        "data": {
+                          "property1": "string",
+                          "property2": "string"
+                        }
+                      },
+                      "createdDateTime": "2019-08-24T14:15:22Z",
+                      "startedDateTime": "2019-08-24T14:15:22Z",
+                      "finishedDateTime": "2019-08-24T14:15:22Z",
+                      "lastModifiedDateTime": "2019-08-24T14:15:22Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "410": {
+            "description": "The transport is already finished.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "patch-api-v1-transports-id"
+      },
+      "delete": {
+        "tags": [
+          "Transports"
+        ],
+        "summary": "Aborts a transport",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The ID of the transport to abort.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK : The transport has been aborted"
+          },
+          "202": {
+            "description": "Accepted : The system accepted the request and will try and abort the transport, depending on the situation the transport will either be aborted or completed normally."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "410": {
+            "description": "Gone : The transport has already been completed and cannot be aborted.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "Gone": {
+                    "value": {
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.9",
+                      "title": "Gone",
+                      "status": 410,
+                      "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "delete-api-v1-transports-id",
+        "description": "Tries to abort a single transport based on the ID"
+      },
+      "parameters": [
+        {
+          "schema": {
+            "type": "string"
+          },
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the transport"
+        }
+      ]
+    }
+  },
+  "components": {
+    "schemas": {
+      "Instruction": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Describes a part of a transport.",
+        "properties": {
+          "locationName": {
+            "type": "string",
+            "description": ""
+          },
+          "action": {
+            "enum": [
+              "None",
+              "PickUp",
+              "DropOff"
+            ],
+            "type": "string",
+            "description": "",
+            "default": "None"
+          },
+          "loads": {
+            "maxItems": 1,
+            "minItems": 1,
+            "type": "array",
+            "description": "",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "example": "507f1f77bcf86cd799439011"
+              }
+            }
+          },
+          "state": {
+            "type": "object",
+            "description": "The state of the instruction",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "Pending",
+                  "Completed",
+                  "Failed"
+                ],
+                "default": "Pending",
+                "readOnly": true
+              },
+              "reason": {
+                "type": "string",
+                "nullable": true,
+                "readOnly": true
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "nullable": true,
+                "readOnly": true
+              }
+            },
+            "readOnly": true
+          }
+        },
+        "required": [
+          "locationName",
+          "loads"
+        ]
+      },
+      "PatchOperation": {
+        "title": "JsonPatchOperation",
+        "required": [
+          "op",
+          "path"
+        ],
+        "type": "object",
+        "allOf": [
+          {
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "A JSON Pointer path."
+              }
+            }
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "op",
+              "value"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "add",
+                  "replace",
+                  "test"
+                ],
+                "type": "string",
+                "description": "The operation to perform."
+              },
+              "value": {
+                "description": "The value to add, replace of test."
+              }
+            }
+          },
+          {
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "remove"
+                ],
+                "type": "string",
+                "description": "The operation to perform."
+              }
+            }
+          },
+          {
+            "required": [
+              "op",
+              "from"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "move",
+                  "copy"
+                ],
+                "type": "string",
+                "description": "The operation to perform"
+              },
+              "from": {
+                "type": "string",
+                "description": "A JSON Pointer path pointing to the location to move/copy from."
+              }
+            }
+          }
+        ],
+        "externalDocs": {
+          "description": "JSON Patch Documentation",
+          "url": "https://jsonpatch.com"
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {},
+        "description": "Details about problem with the request or response"
+      },
+      "Transport": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Represents a single transport of a group of loads between two locations.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ID of the transport.",
+            "example": "507f1f77bcf86cd799439011",
+            "readOnly": true
+          },
+          "externalTransportId": {
+            "type": "string",
+            "description": "An optional external identifier used to identify the transport.",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer",
+            "maximum": 99,
+            "minimum": 0,
+            "description": "The priority of the transport.  \r\n<br>This is used together with Tmhls.Transport.ApplicationCore.Models.Transport.DueTime to determine the execution order of a transport.",
+            "default": 0
+          },
+          "dueTime": {
+            "type": "string",
+            "description": "An optional latest date and time when the transport should have been preferred to be completed.  \r\n<br>This is used together with Tmhls.Transport.ApplicationCore.Models.Transport.Priority to determine the execution order of a transport.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "currentInstruction": {
+            "type": "integer",
+            "description": "The zero-based index of the current instruction.",
+            "format": "int32",
+            "readOnly": true
+          },
+          "instructions": {
+            "minItems": 1,
+            "type": "array",
+            "description": "The collection of instructions to execute.",
+            "items": {
+              "$ref": "#/components/schemas/Instruction"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "An optional dictionary where it's possible to supply metadata for the transport.\r\n<br><i>Additional metadata used by the system:</i><ul><li><b>Flow</b> - An optional string value used to distinguish between different flows.</li></ul>",
+            "nullable": true
+          },
+          "vehicles": {
+            "type": "array",
+            "description": "The vehicles associated with the transport.",
+            "nullable": true,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "readOnly": true
+                }
+              },
+              "readOnly": true
+            },
+            "readOnly": true
+          },
+          "abortRequested": {
+            "type": "boolean",
+            "description": "Indicates whether the transport has been requested to be aborted.",
+            "default": false,
+            "readOnly": true
+          },
+          "state": {
+            "type": "object",
+            "description": "The state of the transport",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "Pending",
+                  "Ongoing",
+                  "Waiting",
+                  "Completed",
+                  "Aborted",
+                  "Rejected",
+                  "Error"
+                ],
+                "default": "Pending",
+                "readOnly": true
+              },
+              "reason": {
+                "type": "string",
+                "nullable": true,
+                "readOnly": true
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "nullable": true,
+                "readOnly": true
+              }
+            },
+            "readOnly": true
+          },
+          "createdDateTime": {
+            "type": "string",
+            "description": "The date and time when the transport was created.",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "startedDateTime": {
+            "type": "string",
+            "description": "The date and time when the transport was started.",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "finishedDateTime": {
+            "type": "string",
+            "description": "The date and time when the transport was completed or aborted.",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "lastModifiedDateTime": {
+            "type": "string",
+            "description": "The date and time when the transport was last modified.",
+            "format": "date-time",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "instructions"
+        ]
+      },
+      "ValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    "securitySchemes": {
+      "OpenID": {
+        "type": "openIdConnect",
+        "openIdConnectUrl": "/auth/realms/T-ONE/.well-known/openid-configuration"
+      },
+      "oauth2": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "/auth/realms/T-ONE/protocol/openid-connect/token",
+            "scopes": {
+              "public.transport": "Required for managing transports"
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Unauthorized": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7235#section-3.1",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Forbidden": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.3",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Not-Found": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Not Found": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+                  "title": "Not Found",
+                  "status": 404,
+                  "traceId": "00-98a05ea57962d843ac4360fdf9984815-5197495a09b0e340-00"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Internal-Server-Error": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Internal Server Error": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+                  "title": "An error occurred while processing your request.",
+                  "status": 500,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Service-Unavailable": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Service Unavailable": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.6.4",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "Traceparent": {
+        "name": "Traceparent",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "example": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          "pattern": "^(?<version>\\d{2})-(?<traceId>[a-f0-9]{32})-(?<parentId>[a-f0-9]{16})-(?<traceFlags>\\d{2})$"
+        },
+        "description": "The traceparent header represents the incoming request in a tracing system in a common format, W3C Trace Context"
+      },
+      "Request-Id": {
+        "name": "Request-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "A unique ID that represents the incoming request. Duplicate requests will be discarded."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "CurrentInstruction",
+      "description": "Manages the current instruction of a transport."
+    },
+    {
+      "name": "Transports",
+      "description": "Manages the transports in the system."
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://127.0.0.1",
+      "description": ""
+    }
+  ],
+  "security": [
+    {
+      "oauth2": [
+        "public.transport"
+      ]
+    }
+  ]
+}
