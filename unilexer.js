@@ -188,8 +188,21 @@ for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]
   TAG_CLASS_YAML[b] = KLASS.BRACKET;            // flow style [a, b] {k: v}
 }
 
-// Python keywords ride the ROLE registry where a role exists; the rest take
-// the generic keyword byte 'k'. Soft keywords (match/case) stay identifiers.
+// Block-byte keyword roles decoded back to their spelling for the mnemonic
+// column, shared across every language — the OP_LITERAL move, one tier
+// down (keywords, not operators). Populated below by PY_KEYWORDS and (later
+// in the file) RUST_KEYWORDS.
+const KW_LITERAL = {};
+
+// Python keywords, the same 13e allocation discipline as Rust: same lexeme
+// AND role as JS reuse the JS byte; role-grounded reuse where the SPELLING
+// differs but the role matches (def/del/raise); one genuine free-letter fit
+// left after Rust claimed mut/pub/struct (global -> 'g'); 'as' shares Rust's
+// role byte (0xA7 — same spelling, the same "reinterpret as" family, same
+// move as reusing JS bytes for near-but-not-identical semantics elsewhere);
+// everything else Python-only takes a fresh 0x80+ block byte, decoded via
+// KW_LITERAL. Soft keywords (match/case) stay identifiers — Python's own
+// analog of Rust's weak `union`.
 const PY_KEYWORDS = new Map([
   // same lexeme, same byte as JS
   ...['if', 'else', 'for', 'while', 'return', 'class', 'import', 'in',
@@ -200,11 +213,17 @@ const PY_KEYWORDS = new Map([
   ['del', 0x64],     // the delete role ('d')
   ['raise', 0x68],   // the throw role ('h')
   ['True', 0x54], ['False', 0x75], ['None', 0x30],
-  // generic 'k'
-  ...['elif', 'except', 'pass', 'with', 'as', 'from', 'is', 'not', 'and',
-    'or', 'lambda', 'global', 'nonlocal', 'assert']
-    .map((w) => [w, 0x6B]),
+  // last free-letter fit after Rust's mut/pub/struct
+  ['global', 0x67],  // g
+  // shares Rust's 'as' role byte (0xA7) — same spelling, same family
+  ['as', 0xA7],
+  // Python-only roles, no free letter left — fresh block bytes
+  ['and', 0xB7], ['or', 0xB8], ['not', 0xB9], ['is', 0xBA], ['from', 0xBB],
+  ['with', 0xBC], ['lambda', 0xBD], ['nonlocal', 0xBE], ['assert', 0xBF],
+  ['elif', 0xC0], ['except', 0xC1], ['pass', 0xC2],
 ]);
+for (const [word, byte] of PY_KEYWORDS) if (byte >= 0x80) KW_LITERAL[byte] = word;
+for (const byte of PY_KEYWORDS.values()) TAG_CLASS_PY[byte] = KLASS.KEYWORD;
 
 const SQL_DIALECTS = {
   oracle: {
@@ -279,11 +298,12 @@ const JS_OPTS = {
 //      ASCII letter with an unambiguous first-letter fit (mut/pub/struct —
 //      the alphabet is otherwise fully claimed by JS's own keyword table);
 //      everything else with no free legible letter takes a 0x80+ block byte,
-//      decoded back to its spelling by RUST_KW_LITERAL for the mnemonic
-//      column — the exact operator-role move (OP_LITERAL), applied to
-//      keywords instead of operators, because the finite resource here is
-//      legible ASCII, not byte VALUES (256 of those is plenty for one
-//      language's keywords).
+//      decoded back to its spelling by KW_LITERAL for the mnemonic column —
+//      the exact operator-role move (OP_LITERAL), applied to keywords
+//      instead of operators, because the finite resource here is legible
+//      ASCII, not byte VALUES (256 of those is plenty for one language's
+//      keywords). 'as' (0xA7) is shared with Python's 'as' — same spelling,
+//      same "reinterpret as" family, one byte for both languages.
 // Left as plain IDENT on purpose: 'union' (a WEAK/contextual keyword — only
 // special in one syntactic position, like Python's soft match/case) and the
 // handful of reserved-for-future-use words that essentially never appear in
@@ -302,10 +322,7 @@ const RUST_KEYWORDS = new Map([
   ['trait', 0xB3], ['type', 0xB4], ['use', 0xB5], ['where', 0xB6],
 ]);
 
-// Block-byte keyword roles decoded back to their spelling for the mnemonic
-// column — mirrors OP_LITERAL exactly, one tier down (keywords, not ops).
-const RUST_KW_LITERAL = {};
-for (const [word, byte] of RUST_KEYWORDS) if (byte >= 0x80) RUST_KW_LITERAL[byte] = word;
+for (const [word, byte] of RUST_KEYWORDS) if (byte >= 0x80) KW_LITERAL[byte] = word;
 
 for (const byte of RUST_KEYWORDS.values()) TAG_CLASS[byte] = KLASS.KEYWORD;
 
@@ -1352,7 +1369,7 @@ class UniLexer {
         return `C(${(lexemeOf(t).match(/\n/g) || []).length})`;
       }
       if (classTable[b] === KLASS.OP) return OP_LITERAL[b] ?? lexemeOf(t);
-      if (classTable[b] === KLASS.KEYWORD && b >= 0x80) return RUST_KW_LITERAL[b] ?? lexemeOf(t);
+      if (classTable[b] === KLASS.KEYWORD && b >= 0x80) return KW_LITERAL[b] ?? lexemeOf(t);
       return String.fromCharCode(b);
     };
 

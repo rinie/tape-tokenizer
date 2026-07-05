@@ -14,7 +14,25 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
-## Unreleased — per-keyword mnemonic bytes for Rust (RUST_KEYWORDS)
+## Unreleased — per-keyword mnemonic bytes for Python (PY_KEYWORDS)
+
+- Closed the last generic-byte bucket: Python's `elif`/`except`/`pass`/
+  `with`/`as`/`from`/`is`/`not`/`and`/`or`/`lambda`/`global`/`nonlocal`/
+  `assert` no longer share one undifferentiated 'k' byte — each gets its own
+  role byte, same discipline as Rust's table.
+- `RUST_KW_LITERAL` renamed to `KW_LITERAL` and made shared across every
+  language's keyword table, not private to Rust — so a role assigned a block
+  byte in one language is visible when Python's table is built next to it,
+  and the same role can never quietly land on two different bytes.
+- `as` deliberately REUSES Rust's role byte (0xA7) rather than taking a new
+  one — same spelling, same "reinterpret as" family (import-as/with-as/
+  except-as vs Rust's type-cast as); `global` took the one remaining
+  free-letter fit ('g') after Rust's mut/pub/struct; everything else
+  Python-only took a fresh block byte past Rust's highest (0xB7-0xC2).
+- `samples/sample.py` extended with a section exercising every newly-mapped
+  keyword; still lossless.
+
+## PR #38 — per-keyword mnemonic bytes for Rust (RUST_KEYWORDS) · 2026-07-05
 
 - Closes the "honest gap" left by PR #29: Rust words no longer all tokenize
   as generic IDENT. Worked the alphabet budget in three tiers rather than one

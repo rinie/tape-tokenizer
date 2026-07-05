@@ -542,9 +542,10 @@ zero-width tokens at the line's content start, linked like any pair, rendered
 as the digraphs ':{' / '}:' (Python's real { } dict braces stay brackets — no
 overloading). Inside ( [ { the family is suppressed (implicit line joining,
 the CPython rule); blank/comment-only lines change nothing; EOF closes what is
-open (a Python file always dedents implicitly). Python keywords ride the role
-registry (def -> 'f', raise -> 'h' the throw role, True/False/None -> T/u/0,
-del -> 'd'; soft keywords match/case stay identifiers). YAML is linter-grade:
+open (a Python file always dedents implicitly). Python's keyword table (see
+below, alongside Rust's) covers every real keyword; soft keywords match/case
+stay identifiers (the weak-keyword treatment, same as Rust's `union`). YAML
+is linter-grade:
 '' doubling in single quotes, '---'/'...' markers close all open levels, and
 block scalars '|' / '>' are ONE string token whose end is the dedent — an
 INDENTATION-parameterised end for the 2a tally, tagged with their own
@@ -581,14 +582,29 @@ otherwise fully claimed by JS's own keyword table — only three free,
 unambiguous first-letter fits were left (mut/pub/struct), so they took them;
 everything else (as/crate/dyn/enum/extern/impl/loop/match/mod/move/ref/
 Self/trait/type/use/where) took a 0x80+ block byte decoded back to its
-spelling by RUST_KW_LITERAL — the OP_LITERAL move, one tier down. The
-insight this forced: legible ASCII letters are the scarce resource here, not
-byte VALUES — 256 values is plenty for one language's keywords, so "run out
-of letters" means "use a block byte + a decode table," never "share a byte
+spelling by KW_LITERAL — the OP_LITERAL move, one tier down. The insight
+this forced: legible ASCII letters are the scarce resource here, not byte
+VALUES — 256 values is plenty for one language's keywords, so "run out of
+letters" means "use a block byte + a decode table," never "share a byte
 between two different roles." Left as plain IDENT on purpose: `union` (a
 weak/contextual keyword, special in only one position, the same treatment
 Python gives its soft `match`/`case`) and the reserved-for-future words that
 essentially never appear in real code (become, box, priv, unsized, …).
+
+**Python's keyword table finished the same exercise** (PY_KEYWORDS), and the
+two tables now share KW_LITERAL rather than each keeping a private decode
+map — a byte assigned to a role in one language is visible to every other
+language's table, so the SAME role never quietly gets two different block
+bytes. The alphabet ran out faster for Python: after Rust claimed mut/pub/
+struct, only one genuine first-letter fit remained (`global` -> 'g'); `as`
+deliberately REUSES Rust's role byte (0xA7) — same spelling, the same
+"reinterpret as" family (import-as, with-as, except-as vs Rust's type-cast
+as) — one byte doing the same job it already does elsewhere, not a new one.
+Everything else Python-only (and/or/not/is/from/with/lambda/nonlocal/
+assert/elif/except/pass) took a fresh block byte past Rust's highest
+(0xB7-0xC2). No word in either table shares a byte with a DIFFERENT role —
+the discipline held across two languages' worth of pressure on the same
+finite alphabet, exactly the promise the operator ROLE registry made first.
 
 JSON5 needed no new opts flags beyond narrowing JS_OPTS: object/array `{}[]`
 are the same char-matched bracket family as JS, `:`/`,` are already punct, and
