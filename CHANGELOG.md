@@ -14,7 +14,34 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
-## Unreleased — `tdump.js --outline`: breadth-first view over any of the 7 modes
+## Unreleased — per-keyword mnemonic bytes for Rust (RUST_KEYWORDS)
+
+- Closes the "honest gap" left by PR #29: Rust words no longer all tokenize
+  as generic IDENT. Worked the alphabet budget in three tiers rather than one
+  shared generic byte: (1) same lexeme AND role as JS — reuse the JS byte
+  outright (else/false/for/if/in/let/return/true/while/break/continue/const/
+  async/await, plus static/super/try/typeof/yield where Rust's meaning
+  drifts from JS's but the spelling stays the mnemonic); (2) different
+  spelling, matching role — `fn` takes the SAME byte as JS's `function` and
+  Python's `def` (one function role, three languages), `self` takes JS's
+  `this` byte (the receiver role); (3) Rust-only concepts with no role to
+  borrow — three genuine free-letter fits (mut/pub/struct), everything else
+  (as/crate/dyn/enum/extern/impl/loop/match/mod/move/ref/Self/trait/type/
+  use/where) takes a 0x80+ block byte decoded back to its spelling by a new
+  `RUST_KW_LITERAL` table — the exact `OP_LITERAL` move, one tier down.
+- The forcing insight: legible ASCII letters ran out (JS's own keyword table
+  already claims nearly the whole alphabet), but byte VALUES didn't — 256 is
+  plenty for one language's keywords. "Out of letters" means "block byte +
+  decode table," never "share a byte between two different roles" — the
+  §13e discipline held under real pressure instead of being relaxed.
+- Left as plain IDENT on purpose: `union` (weak/contextual, like Python's
+  soft `match`/`case`) and reserved-for-future words that don't appear in
+  real code (become, box, priv, unsized, …).
+- `samples/sample.rs` extended to exercise the new vocabulary (struct/impl/
+  trait/enum/mod/match/loop/dyn/where/move/as, alongside the existing
+  raw-string/lifetime coverage); still lossless.
+
+## PR #37 — `tdump.js --outline`: breadth-first view over any of the 7 modes · 2026-07-05
 
 - Ported `scan.js`'s folded breadth-first outline (fold at depth n; a matched
   span starting at depth n-1 collapses to one line via its jump pointer) onto

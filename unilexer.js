@@ -265,10 +265,52 @@ const JS_OPTS = {
   nestedComments: false, // Rust /* /* */ */ — depth counter, not a flag
 };
 
+// Rust keywords, same 13e allocation rule as everywhere else — byte-per-role,
+// never overload — worked in three tiers:
+//   1. same lexeme AND same role as JS: reuse the JS byte outright (else,
+//      false, for, if, in, let, return, true, while, break, continue, const,
+//      async, await — plus static/super/try/typeof/yield/of, whose Rust
+//      meaning differs somewhat from JS's but the SPELLING is the mnemonic,
+//      same call already made for Python's 'in'/'or'/etc).
+//   2. different spelling, matching ROLE: fn -> the function role (same
+//      byte as JS's KW_FUNCTION AND Python's def — 'f' is the function
+//      mnemonic across all three); self -> the receiver role (JS's KW_THIS).
+//   3. Rust-only concepts, no JS role to borrow: three get a genuine free
+//      ASCII letter with an unambiguous first-letter fit (mut/pub/struct —
+//      the alphabet is otherwise fully claimed by JS's own keyword table);
+//      everything else with no free legible letter takes a 0x80+ block byte,
+//      decoded back to its spelling by RUST_KW_LITERAL for the mnemonic
+//      column — the exact operator-role move (OP_LITERAL), applied to
+//      keywords instead of operators, because the finite resource here is
+//      legible ASCII, not byte VALUES (256 of those is plenty for one
+//      language's keywords).
+// Left as plain IDENT on purpose: 'union' (a WEAK/contextual keyword — only
+// special in one syntactic position, like Python's soft match/case) and the
+// handful of reserved-for-future-use words that essentially never appear in
+// real code (become, box, priv, unsized, abstract, final, override, macro).
+const RUST_KEYWORDS = new Map([
+  ...['else', 'false', 'for', 'if', 'in', 'let', 'return', 'static', 'super',
+    'true', 'try', 'typeof', 'while', 'yield', 'async', 'await',
+    'break', 'continue', 'const']
+    .map((w) => [w, KEYWORDS.get(w)]),
+  ['fn', KEYWORDS.get('function')],   // the function role
+  ['self', KEYWORDS.get('this')],     // the receiver role
+  ['mut', 0x6D], ['pub', 0x70], ['struct', 0x53],
+  ['as', 0xA7], ['crate', 0xA8], ['dyn', 0xA9], ['enum', 0xAA],
+  ['extern', 0xAB], ['impl', 0xAC], ['loop', 0xAD], ['match', 0xAE],
+  ['mod', 0xAF], ['move', 0xB0], ['ref', 0xB1], ['Self', 0xB2],
+  ['trait', 0xB3], ['type', 0xB4], ['use', 0xB5], ['where', 0xB6],
+]);
+
+// Block-byte keyword roles decoded back to their spelling for the mnemonic
+// column — mirrors OP_LITERAL exactly, one tier down (keywords, not ops).
+const RUST_KW_LITERAL = {};
+for (const [word, byte] of RUST_KEYWORDS) if (byte >= 0x80) RUST_KW_LITERAL[byte] = word;
+
+for (const byte of RUST_KEYWORDS.values()) TAG_CLASS[byte] = KLASS.KEYWORD;
+
 const RUST_OPTS = {
-  keywords: new Map(),   // honest gap: no Rust keyword/mnemonic table yet —
-                         // all words tokenize as IDENT until that vocabulary
-                         // exercise is done (fn, let, impl, match, …)
+  keywords: RUST_KEYWORDS,
   regex: false,
   templates: false,
   charLifetimes: true,
@@ -1310,6 +1352,7 @@ class UniLexer {
         return `C(${(lexemeOf(t).match(/\n/g) || []).length})`;
       }
       if (classTable[b] === KLASS.OP) return OP_LITERAL[b] ?? lexemeOf(t);
+      if (classTable[b] === KLASS.KEYWORD && b >= 0x80) return RUST_KW_LITERAL[b] ?? lexemeOf(t);
       return String.fromCharCode(b);
     };
 
