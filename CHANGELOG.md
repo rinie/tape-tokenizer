@@ -14,7 +14,49 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
-## Unreleased — per-keyword mnemonic bytes for Python (PY_KEYWORDS)
+## Unreleased — the CSV + shared "imported keyword" byte, for all three languages
+
+- Investigated (at the user's request) a CSV-driven keyword table before
+  building anything: cross-checking SQL's 86 Oracle keywords against every
+  other table found only 21 exact-spelling reuse candidates; the remaining
+  ~65 would all be equally-illegible block bytes no matter which specific
+  values they got — hand-picking had stopped buying anything at this point.
+- New shape instead of more block bytes: **a keyword IS an identifier,
+  lexically** — every non-reused SQL keyword shares ONE byte (`T_EXTKW`),
+  classed IDENT, interned into the SAME pool as any other identifier.
+  `tfreq`'s identifier listing picks them up for free (zero tooling change);
+  the mnemonic column shows a stable `id{n}` — n is the word's position
+  among the CSV's non-reused entries, never a per-file pool index, so it
+  can't depend on what else is in whatever file is scanned. Appending a
+  keyword is now genuinely unlimited: the byte was already spent once, up
+  front, forever — "out of bytes" can't happen again.
+- Follow-up (owner's call, "overlapping assignments across different
+  languages" are fine as long as the C/JS base stays in core): Rust's and
+  Python's OWN former block-byte tiers (Rust's as/crate/dyn/enum/extern/
+  impl/loop/match/mod/move/ref/Self/trait/type/use/where; Python's and/or/
+  not/is/from/with/lambda/nonlocal/assert/elif/except/pass/as) moved onto
+  the SAME `T_EXTKW` + CSV mechanism, retiring `KW_LITERAL` (the per-word
+  block-byte decode table) entirely — nothing hardcoded needs a block byte
+  anymore. Rust's `id7` and Python's `id7` are unrelated and never
+  compared, so the overlap is harmless; `_result()`/`_tape().finish()` now
+  take an explicit `extkwIndex` parameter (each language passes its OWN
+  index map) instead of `mnemonicOf` hardcoding a single table.
+- What stays hardcoded, explicit, and in-core (never CSV, never
+  auto-discovered from another table at runtime): the C/JS-grounded base
+  (`KEYWORDS` in token-tags.js) and the hand-curated reuse/role-grounded
+  tiers that read from it (`RUST_KEYWORDS`, `PY_KEYWORDS`,
+  `SQL_KEYWORD_REUSE`) — auto-discovery would mean editing one language's
+  table could silently change another's byte assignments, the opposite of
+  the stability this whole mechanism is for.
+- The vocabulary itself moved out of hardcoded `Set`/`Map` entries into
+  `sql-keywords-oracle.csv`, `rust-keywords.csv`, and `python-keywords.csv`,
+  loaded via `loadKeywordCsv()` at module load, resolved relative to
+  `unilexer.js` via `import.meta.url` — the same "derive a table from an
+  external source" move `harvest.js` already makes
+  for TextMate grammars. One rule: append, don't insert — inserting a word
+  mid-file shifts every id after it; appending only ever adds a new one.
+
+## PR #39 — per-keyword mnemonic bytes for Python (PY_KEYWORDS) · 2026-07-05
 
 - Closed the last generic-byte bucket: Python's `elif`/`except`/`pass`/
   `with`/`as`/`from`/`is`/`not`/`and`/`or`/`lambda`/`global`/`nonlocal`/

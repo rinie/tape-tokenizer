@@ -36,6 +36,7 @@
 // tokenizer.js (defuse) and lexical-scanner.js (scan/validate — seams, cpp,
 // XML, multi-language tables) are migration targets, not yet migrated.
 
+import { readFileSync } from 'node:fs';
 import { T, KEYWORDS, OPS, OP_LITERAL, OP_CONCAT, SQL_OP_ROLES } from './token-tags.js';
 
 // ── classes (coarse, derived from the tag byte) ──────────────────────────────
@@ -72,6 +73,15 @@ const TAG_DEDENT  = 0x0F;     // SI (shift in)   — DEDENT: a level closed.
 const TAG_COMMENT = 0x23;     // '#'  comment without newlines (// or one-line /* */)
 const TAG_COMMENT_ML = 0x11;  // multi-line comment — newlines stay INSIDE the
                               // token; renders as C(n), n = newlines contained
+const T_EXTKW = 0xC3;         // imported/extended keyword (runtime CSV-sourced
+                              // vocabulary) — ONE shared byte regardless of how
+                              // many words the CSV lists; class IDENT (keywords,
+                              // imported keywords, and identifiers are the same
+                              // lexical shape, so they're interned into the
+                              // SAME pool). The mnemonic shows a stable 'id{n}'
+                              // (n = the word's position among the CSV's
+                              // non-reused entries) instead of the byte itself —
+                              // see loadKeywordCsv() below.
 
 // tag byte → class, built once from token-tags
 const TAG_CLASS = new Uint8Array(256).fill(KLASS.PUNCT);
@@ -188,21 +198,49 @@ for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]
   TAG_CLASS_YAML[b] = KLASS.BRACKET;            // flow style [a, b] {k: v}
 }
 
-// Block-byte keyword roles decoded back to their spelling for the mnemonic
-// column, shared across every language — the OP_LITERAL move, one tier
-// down (keywords, not operators). Populated below by PY_KEYWORDS and (later
-// in the file) RUST_KEYWORDS.
-const KW_LITERAL = {};
+// Runtime-loaded keyword vocabulary: the CSV is the source of truth, so
+// adding a keyword is a one-line edit to a data file, never a code change.
+// One word per line; blank lines and '#'-prefixed comment lines are ignored.
+// Resolved relative to THIS file (not the caller's cwd) — the same
+// harvest.js precedent of deriving a table from an external source.
+function loadKeywordCsv(relPath) {
+  const text = readFileSync(new URL(relPath, import.meta.url), 'utf8');
+  return text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+}
 
-// Python keywords, the same 13e allocation discipline as Rust: same lexeme
-// AND role as JS reuse the JS byte; role-grounded reuse where the SPELLING
-// differs but the role matches (def/del/raise); one genuine free-letter fit
-// left after Rust claimed mut/pub/struct (global -> 'g'); 'as' shares Rust's
-// role byte (0xA7 — same spelling, the same "reinterpret as" family, same
-// move as reusing JS bytes for near-but-not-identical semantics elsewhere);
-// everything else Python-only takes a fresh 0x80+ block byte, decoded via
-// KW_LITERAL. Soft keywords (match/case) stay identifiers — Python's own
-// analog of Rust's weak `union`.
+// Every CSV word with no reuse candidate (see each language's REUSE map
+// below) shares ONE tag byte (T_EXTKW, class IDENT — a keyword and an
+// identifier are the same lexical shape) rather than a byte per word; what
+// word it IS comes from the interned pool, exactly like a plain identifier.
+// The mnemonic label is this word's STABLE position among the CSV's
+// non-reused entries — appending word #87 is just 'id87'; it never
+// renumbers id1..id86 (append, don't insert, to keep ids stable across
+// edits). Since disambiguation is entirely by lexeme + THIS index (never by
+// byte value), the byte and any given id number MAY overlap harmlessly
+// across languages — Rust's id7 and Python's id7 are unrelated, each
+// resolved only against its own CSV and never compared.
+function buildExtkwIndex(words, reuseMap) {
+  const index = new Map();
+  let nextId = 1;
+  for (const w of words) {
+    if (reuseMap.has(w) || index.has(w)) continue;
+    index.set(w, nextId++);
+  }
+  return index;
+}
+TAG_CLASS[T_EXTKW] = KLASS.IDENT;
+TAG_CLASS_PY[T_EXTKW] = KLASS.IDENT;
+TAG_CLASS_SQL[T_EXTKW] = KLASS.IDENT;
+
+// Python keywords: same lexeme AND role as JS reuse the JS byte; role-
+// grounded reuse where the SPELLING differs but the role matches (def/del/
+// raise); one genuine free-letter fit left after Rust claimed mut/pub/struct
+// (global -> 'g'). Everything else Python-only (and/or/not/is/from/with/
+// lambda/nonlocal/assert/elif/except/pass/as) is runtime-loaded from
+// python-keywords.csv — the "no free letter left" tier that used to mean
+// hunting for a fresh block byte per word now means nothing at all: it's
+// just another line in a CSV. Soft keywords (match/case) stay identifiers —
+// Python's own analog of Rust's weak `union`.
 const PY_KEYWORDS = new Map([
   // same lexeme, same byte as JS
   ...['if', 'else', 'for', 'while', 'return', 'class', 'import', 'in',
@@ -215,34 +253,40 @@ const PY_KEYWORDS = new Map([
   ['True', 0x54], ['False', 0x75], ['None', 0x30],
   // last free-letter fit after Rust's mut/pub/struct
   ['global', 0x67],  // g
-  // shares Rust's 'as' role byte (0xA7) — same spelling, same family
-  ['as', 0xA7],
-  // Python-only roles, no free letter left — fresh block bytes
-  ['and', 0xB7], ['or', 0xB8], ['not', 0xB9], ['is', 0xBA], ['from', 0xBB],
-  ['with', 0xBC], ['lambda', 0xBD], ['nonlocal', 0xBE], ['assert', 0xBF],
-  ['elif', 0xC0], ['except', 0xC1], ['pass', 0xC2],
 ]);
-for (const [word, byte] of PY_KEYWORDS) if (byte >= 0x80) KW_LITERAL[byte] = word;
 for (const byte of PY_KEYWORDS.values()) TAG_CLASS_PY[byte] = KLASS.KEYWORD;
+const PY_CSV_KEYWORDS = loadKeywordCsv('./python-keywords.csv');
+const PY_EXTKW_INDEX = buildExtkwIndex(PY_CSV_KEYWORDS, PY_KEYWORDS);
+const PY_EXTKW_SET = new Set(PY_CSV_KEYWORDS);
+
+const SQL_ORACLE_KEYWORDS = loadKeywordCsv('./sql-keywords-oracle.csv');
+
+// The only words worth an EXPLICIT reuse map are the ones with a genuinely
+// C/JS-grounded byte (the core, kept in code, never CSV) — everything else,
+// including words that happen to share a spelling with Python's or Rust's
+// OWN csv-loaded vocabulary (and/or/not/is/with/raise/as/where/type), is
+// just an ordinary SQL CSV word: each language resolves its own id
+// independently, and that overlap across languages is fine (never
+// auto-discovered from another table at runtime, so editing Python's or
+// Rust's csv can't silently change SQL's assignments — the stability this
+// is for).
+const SQL_KEYWORD_REUSE = new Map([
+  ['delete', KEYWORDS.get('delete')], ['null', KEYWORDS.get('null')],
+  ['else', KEYWORDS.get('else')], ['function', KEYWORDS.get('function')],
+  ['return', KEYWORDS.get('return')], ['while', KEYWORDS.get('while')],
+  ['for', KEYWORDS.get('for')], ['in', KEYWORDS.get('in')],
+  ['default', KEYWORDS.get('default')], ['true', KEYWORDS.get('true')],
+  ['false', KEYWORDS.get('false')],
+]);
+for (const byte of SQL_KEYWORD_REUSE.values()) TAG_CLASS_SQL[byte] = KLASS.KEYWORD;
+const SQL_EXTKW_INDEX = buildExtkwIndex(SQL_ORACLE_KEYWORDS, SQL_KEYWORD_REUSE);
 
 const SQL_DIALECTS = {
   oracle: {
     // block structure: opener kinds; 'end' is handled specially (multi-word closer)
     openers: new Set(['if', 'loop', 'case', 'begin']),
     opRoles: SQL_OP_ROLES,   // spelling -> role byte (:= = <> != ^= ||)
-    keywords: new Set([
-      'select', 'from', 'where', 'insert', 'update', 'delete', 'into', 'values',
-      'set', 'and', 'or', 'not', 'null', 'is', 'as', 'then', 'elsif', 'else',
-      'when', 'declare', 'procedure', 'function', 'package', 'body', 'return',
-      'cursor', 'type', 'exception', 'raise', 'exit', 'while', 'for', 'in',
-      'commit', 'rollback', 'savepoint', 'grant', 'revoke', 'create', 'alter',
-      'drop', 'replace', 'table', 'view', 'index', 'trigger', 'sequence',
-      'union', 'all', 'distinct', 'group', 'by', 'having', 'order', 'asc',
-      'desc', 'between', 'like', 'exists', 'join', 'left', 'right', 'inner',
-      'outer', 'full', 'cross', 'on', 'using', 'connect', 'start', 'with',
-      'fetch', 'open', 'close', 'bulk', 'collect', 'forall', 'pragma',
-      'constant', 'default', 'out', 'nocopy', 'rownum', 'dual', 'true', 'false',
-    ]),
+    keywords: new Set(SQL_ORACLE_KEYWORDS),
     builtins: new Set([
       'nvl', 'nvl2', 'coalesce', 'decode', 'nullif', 'substr', 'instr',
       'length', 'upper', 'lower', 'initcap', 'trim', 'ltrim', 'rtrim', 'lpad',
@@ -285,7 +329,7 @@ const JS_OPTS = {
 };
 
 // Rust keywords, same 13e allocation rule as everywhere else — byte-per-role,
-// never overload — worked in three tiers:
+// never overload — worked in two tiers now (the third moved to a CSV):
 //   1. same lexeme AND same role as JS: reuse the JS byte outright (else,
 //      false, for, if, in, let, return, true, while, break, continue, const,
 //      async, await — plus static/super/try/typeof/yield/of, whose Rust
@@ -293,17 +337,15 @@ const JS_OPTS = {
 //      same call already made for Python's 'in'/'or'/etc).
 //   2. different spelling, matching ROLE: fn -> the function role (same
 //      byte as JS's KW_FUNCTION AND Python's def — 'f' is the function
-//      mnemonic across all three); self -> the receiver role (JS's KW_THIS).
-//   3. Rust-only concepts, no JS role to borrow: three get a genuine free
-//      ASCII letter with an unambiguous first-letter fit (mut/pub/struct —
-//      the alphabet is otherwise fully claimed by JS's own keyword table);
-//      everything else with no free legible letter takes a 0x80+ block byte,
-//      decoded back to its spelling by KW_LITERAL for the mnemonic column —
-//      the exact operator-role move (OP_LITERAL), applied to keywords
-//      instead of operators, because the finite resource here is legible
-//      ASCII, not byte VALUES (256 of those is plenty for one language's
-//      keywords). 'as' (0xA7) is shared with Python's 'as' — same spelling,
-//      same "reinterpret as" family, one byte for both languages.
+//      mnemonic across all three); self -> the receiver role (JS's KW_THIS);
+//      three genuine free-letter fits (mut/pub/struct — the alphabet is
+//      otherwise fully claimed by JS's own keyword table).
+// Everything else Rust-only (as/crate/dyn/enum/extern/impl/loop/match/mod/
+// move/ref/Self/trait/type/use/where) is runtime-loaded from
+// rust-keywords.csv — the "no free legible letter" tier that used to mean a
+// hand-picked 0x80+ block byte per word is now just another CSV line;
+// overlap with Python's or SQL's own csv-loaded ids is harmless (each
+// resolves only against its own vocabulary).
 // Left as plain IDENT on purpose: 'union' (a WEAK/contextual keyword — only
 // special in one syntactic position, like Python's soft match/case) and the
 // handful of reserved-for-future-use words that essentially never appear in
@@ -316,18 +358,16 @@ const RUST_KEYWORDS = new Map([
   ['fn', KEYWORDS.get('function')],   // the function role
   ['self', KEYWORDS.get('this')],     // the receiver role
   ['mut', 0x6D], ['pub', 0x70], ['struct', 0x53],
-  ['as', 0xA7], ['crate', 0xA8], ['dyn', 0xA9], ['enum', 0xAA],
-  ['extern', 0xAB], ['impl', 0xAC], ['loop', 0xAD], ['match', 0xAE],
-  ['mod', 0xAF], ['move', 0xB0], ['ref', 0xB1], ['Self', 0xB2],
-  ['trait', 0xB3], ['type', 0xB4], ['use', 0xB5], ['where', 0xB6],
 ]);
-
-for (const [word, byte] of RUST_KEYWORDS) if (byte >= 0x80) KW_LITERAL[byte] = word;
-
 for (const byte of RUST_KEYWORDS.values()) TAG_CLASS[byte] = KLASS.KEYWORD;
+const RUST_CSV_KEYWORDS = loadKeywordCsv('./rust-keywords.csv');
+const RUST_EXTKW_INDEX = buildExtkwIndex(RUST_CSV_KEYWORDS, RUST_KEYWORDS);
+const RUST_EXTKW_SET = new Set(RUST_CSV_KEYWORDS);
 
 const RUST_OPTS = {
   keywords: RUST_KEYWORDS,
+  extKeywords: RUST_EXTKW_SET,        // csv-loaded, no dedicated byte
+  extKeywordIndex: RUST_EXTKW_INDEX,  // -> stable id{n} for the mnemonic
   regex: false,
   templates: false,
   charLifetimes: true,
@@ -450,10 +490,10 @@ class UniLexer {
         if (opts.rawStrings && (word === 'r' || word === 'b' || word === 'br' || word === 'c' || word === 'cr')) {
           const r = this._rawOpen(src, j, word);
           if (r) { end = r.end; tag = r.tag; }
-          else { end = j; tag = opts.keywords.get(word) ?? T.IDENT; }
+          else { end = j; tag = opts.keywords.get(word) ?? (opts.extKeywords?.has(word) ? T_EXTKW : T.IDENT); }
         } else {
           end = j;
-          tag = opts.keywords.get(word) ?? T.IDENT;
+          tag = opts.keywords.get(word) ?? (opts.extKeywords?.has(word) ? T_EXTKW : T.IDENT);
         }
       } else if (TAG_CLASS[c] === KLASS.BRACKET) {
         end = i + 1; tag = c;
@@ -516,7 +556,7 @@ class UniLexer {
       i = end;
     }
 
-    return tp.finish(this, src, TAG_CLASS, false);
+    return tp.finish(this, src, TAG_CLASS, false, opts.extKeywordIndex);
   }
 
   // ── XML mode — same uniform tape, structural-role mnemonics ───────────────
@@ -713,8 +753,8 @@ class UniLexer {
     };
     const link = (a, b) => { linkArr[a] = b; linkArr[b] = a; };
     const poolOf = (t) => poolArr[t];
-    const finish = (self, src, classTable, spanRaw) =>
-      self._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, classTable, spanRaw);
+    const finish = (self, src, classTable, spanRaw, extkwIndex) =>
+      self._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, classTable, spanRaw, extkwIndex);
     return { emit, link, poolOf, finish };
   }
 
@@ -815,7 +855,8 @@ class UniLexer {
           continue;
         }
         const kw = PY_KEYWORDS.get(word);
-        emit(kw ?? T.IDENT, kw ? KLASS.KEYWORD : KLASS.IDENT, word, start, depth);
+        const tag = kw ?? (PY_EXTKW_SET.has(word) ? T_EXTKW : T.IDENT);
+        emit(tag, kw ? KLASS.KEYWORD : KLASS.IDENT, word, start, depth);
         i = j; continue;
       }
       if (TAG_CLASS[c] === KLASS.BRACKET) {                   // ( [ { ) ] }
@@ -858,7 +899,7 @@ class UniLexer {
       const open = indentTok.pop();
       if (open !== undefined) link(open, idx);
     }
-    return tp.finish(this, src, TAG_CLASS_PY, true);
+    return tp.finish(this, src, TAG_CLASS_PY, true, PY_EXTKW_INDEX);
   }
 
   // Python string from its quote char (prefix already consumed into start):
@@ -1146,8 +1187,12 @@ class UniLexer {
         const calls = src.charCodeAt(p) === 0x28;
         if (d.builtins.has(lower) && (calls || !d.keywords.has(lower))) {
           emit(0x42, KLASS.BUILTIN, word, start, depth);             // B
+        } else if (SQL_KEYWORD_REUSE.has(lower)) {
+          emit(SQL_KEYWORD_REUSE.get(lower), KLASS.KEYWORD, word, start, depth);
         } else if (d.keywords.has(lower)) {
-          emit(0x6B, KLASS.KEYWORD, word, start, depth);             // k
+          // imported keyword — treated as an identifier (same lexical shape,
+          // same interned pool), mnemonic decoded via SQL_EXTKW_INDEX
+          emit(T_EXTKW, KLASS.IDENT, word, start, depth);
         } else {
           emit(T.IDENT, KLASS.IDENT, word, start, depth);            // I
         }
@@ -1193,7 +1238,7 @@ class UniLexer {
       i++;
     }
 
-    return tp.finish(this, src, TAG_CLASS_SQL, true);
+    return tp.finish(this, src, TAG_CLASS_SQL, true, SQL_EXTKW_INDEX);
   }
 
   // Oracle string: '…' where '' (doubled quote) is the escape; may span lines.
@@ -1334,7 +1379,7 @@ class UniLexer {
     return j;
   }
 
-  _result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, classTable = TAG_CLASS, xml = false) {
+  _result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, classTable = TAG_CLASS, xml = false, extkwIndex = null) {
     const tagOf    = (t) => tagArr[t];
     const charOf   = (t) => String.fromCharCode(tagArr[t]);
     const classOf  = (t) => classTable[tagArr[t]];
@@ -1369,7 +1414,11 @@ class UniLexer {
         return `C(${(lexemeOf(t).match(/\n/g) || []).length})`;
       }
       if (classTable[b] === KLASS.OP) return OP_LITERAL[b] ?? lexemeOf(t);
-      if (classTable[b] === KLASS.KEYWORD && b >= 0x80) return KW_LITERAL[b] ?? lexemeOf(t);
+      if (b === T_EXTKW && extkwIndex) {                       // imported keyword — the
+        const lex = lexemeOf(t);                               // caller's own CSV-position
+        const idx = extkwIndex.get(lex) ?? extkwIndex.get(lex.toLowerCase());  // index (exact
+        return idx !== undefined ? `id${idx}` : 'I';           // case first, then ci fallback)
+      }
       return String.fromCharCode(b);
     };
 

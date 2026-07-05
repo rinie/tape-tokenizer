@@ -75,6 +75,11 @@ tokenizer.js         the original flat value-token tape (historical; demo-only)
 token-tags.js        the mnemonic tag-byte scheme (shared by unilexer + tokenizer)
 demos/               runnable demos for each piece (node demos/demo-*.js)
 samples/             real files used for validation (incl. a C TextMate grammar)
+*-keywords*.csv      runtime-loaded keyword vocabulary, one word per line —
+                     rust-keywords.csv, python-keywords.csv,
+                     sql-keywords-oracle.csv (see unilexer.js's
+                     loadKeywordCsv(); the source of truth for each
+                     language's "no free letter" keyword tier)
 docs/                design docs (see below)
 CHANGELOG.md         progress and setbacks across the PRs
 ```

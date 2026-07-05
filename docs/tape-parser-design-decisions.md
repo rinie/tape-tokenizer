@@ -568,43 +568,78 @@ changes. Oracle lexical specifics: '' doubled-quote escape, q'[…]' q-quoting
 (another 2a parameterised end), "Quoted" = identifier not string, := <> ..
 operators.
 
-**Rust's per-keyword mnemonic table** (RUST_KEYWORDS) worked the alphabet
-budget in three tiers rather than falling back to one generic byte. Same
-lexeme AND same role as JS: reuse the JS byte outright (else/false/for/
-if/in/let/return/true/while/break/continue/const/async/await, plus static/
-super/try/typeof/yield whose Rust meaning drifts from JS's but the spelling
-is the mnemonic — the same call already made for Python's reused words).
-Different spelling, matching role: `fn` takes the function role's byte (same
-'f' as JS's own function keyword AND Python's `def` — one role, one byte,
-three languages); `self` takes the receiver role (JS's `this` byte). The
-remaining Rust-only concepts have no role to borrow, and the alphabet is
-otherwise fully claimed by JS's own keyword table — only three free,
-unambiguous first-letter fits were left (mut/pub/struct), so they took them;
-everything else (as/crate/dyn/enum/extern/impl/loop/match/mod/move/ref/
-Self/trait/type/use/where) took a 0x80+ block byte decoded back to its
-spelling by KW_LITERAL — the OP_LITERAL move, one tier down. The insight
-this forced: legible ASCII letters are the scarce resource here, not byte
-VALUES — 256 values is plenty for one language's keywords, so "run out of
-letters" means "use a block byte + a decode table," never "share a byte
-between two different roles." Left as plain IDENT on purpose: `union` (a
-weak/contextual keyword, special in only one position, the same treatment
-Python gives its soft `match`/`case`) and the reserved-for-future words that
-essentially never appear in real code (become, box, priv, unsized, …).
+**Rust's and Python's per-keyword mnemonic tables** (RUST_KEYWORDS,
+PY_KEYWORDS) each worked the alphabet budget in tiers. Same lexeme AND same
+role as JS: reuse the JS byte outright (Rust's else/false/for/if/in/let/
+return/true/while/break/continue/const/async/await, plus static/super/try/
+typeof/yield whose Rust meaning drifts from JS's but the spelling is the
+mnemonic; Python's if/else/for/while/return/class/import/in/try/finally/
+continue/break/yield/await/async, same move). Different spelling, matching
+role: Rust's `fn` and Python's `def` both take JS's function-role byte ('f'
+— one role, one byte, three languages); Rust's `self` takes JS's `this` byte
+(the receiver role); Python's `del`/`raise`/`True`/`False`/`None` take their
+own role-grounded bytes. A few genuine free-letter fits, hand-picked because
+the alphabet was otherwise fully claimed by JS's own keyword table: Rust's
+mut/pub/struct, Python's `global`. Left as plain IDENT on purpose: Rust's
+weak `union` and Python's soft `match`/`case` (both contextual keywords,
+special in only one syntactic position) and the reserved-for-future words
+that essentially never appear in real code.
 
-**Python's keyword table finished the same exercise** (PY_KEYWORDS), and the
-two tables now share KW_LITERAL rather than each keeping a private decode
-map — a byte assigned to a role in one language is visible to every other
-language's table, so the SAME role never quietly gets two different block
-bytes. The alphabet ran out faster for Python: after Rust claimed mut/pub/
-struct, only one genuine first-letter fit remained (`global` -> 'g'); `as`
-deliberately REUSES Rust's role byte (0xA7) — same spelling, the same
-"reinterpret as" family (import-as, with-as, except-as vs Rust's type-cast
-as) — one byte doing the same job it already does elsewhere, not a new one.
-Everything else Python-only (and/or/not/is/from/with/lambda/nonlocal/
-assert/elif/except/pass) took a fresh block byte past Rust's highest
-(0xB7-0xC2). No word in either table shares a byte with a DIFFERENT role —
-the discipline held across two languages' worth of pressure on the same
-finite alphabet, exactly the promise the operator ROLE registry made first.
+**Everything past those tiers — for Rust, Python, AND SQL — is CSV-loaded
+and shares ONE mechanism, not three.** This shape emerged from investigating
+SQL's table (owner's call): by the time SQL's turn came, 86 Oracle keywords
+needed bytes and the alphabet was already gone — cross-checking against
+every other table found only 21 exact-spelling matches (kept EXPLICIT and
+hand-curated in `SQL_KEYWORD_REUSE`, never auto-discovered by scanning the
+other tables at runtime, since auto-reuse would mean editing Python's or
+Rust's table could silently change SQL's bytes later — the opposite of
+stability); the remaining ~65 would all be equally-illegible block bytes
+regardless of which specific values they got, since there was no meaningful
+mnemonic left to assign — hand-picking had stopped buying anything.
+
+That is precisely the case for leaning on the insight already latent in
+`13e`: **a keyword and an identifier are the same lexical shape** — a
+reserved WORD is only special because a table says so, not because it looks
+different. So the "no free letter" tier doesn't take individual block bytes
+at all, for any of the three languages: every non-reused keyword shares ONE
+byte (`T_EXTKW`), classed as IDENT and interned into the SAME pool as any
+other identifier — `tfreq`'s identifier listing picks them up for free, zero
+tooling change. What word a given `T_EXTKW` token IS comes from the pool,
+exactly like a plain identifier; the mnemonic column shows a stable `id{n}`
+— `n` is the word's position among ITS OWN language's CSV non-reused
+entries, not a per-file pool index, so it never depends on what else
+appears in whatever file is being scanned. Once this worked for SQL, Rust's
+and Python's own former block-byte tiers (Rust's as/crate/dyn/enum/extern/
+impl/loop/match/mod/move/ref/Self/trait/type/use/where; Python's and/or/
+not/is/from/with/lambda/nonlocal/assert/elif/except/pass/as) moved onto the
+same mechanism (owner's call) — retiring the `KW_LITERAL` decode table
+entirely, since nothing hardcoded needs a block byte anymore.
+
+**Cross-language overlap is fine, deliberately** (owner's call): Rust's `id1`
+and Python's `id1` are unrelated — each is resolved only against its own
+CSV, never compared, so the SAME id number (or even the SAME word, like
+`as`, which is CSV vocabulary in both Rust and Python now) meaning different
+things in different languages is not a collision, because a keyword and an
+identifier were always the same lexical shape and identifiers have never
+needed cross-language uniqueness either. What must stay a hardcoded, explicit,
+in-core mapping — never CSV, never auto-discovered — is the C/JS-grounded
+BASE (`KEYWORDS` in token-tags.js) and the hand-curated reuse/role tiers
+that read FROM it (`RUST_KEYWORDS`, `PY_KEYWORDS`, `SQL_KEYWORD_REUSE`):
+that's the one piece of this whole scheme that has to stay legible and
+intentional, because it's where the actual judgment calls live.
+
+The vocabulary itself is runtime-loaded per language (`rust-keywords.csv`,
+`python-keywords.csv`, `sql-keywords-oracle.csv`) via `loadKeywordCsv()`,
+resolved relative to `unilexer.js` via `import.meta.url` — the same "derive
+a table from an external source" move `harvest.js` already makes for
+TextMate grammars, just for a keyword list instead of a grammar file.
+Appending a keyword to any of these CSVs is a one-line data edit, needs no
+code change, and is genuinely unlimited — it will never again run into "out
+of bytes," because the byte was already spent once, up front, forever, for
+every language that will ever need this tier. The one stability rule this
+asks of a CSV: APPEND new words, don't insert them in the middle —
+inserting shifts every id after it, while appending only ever adds a new
+highest id.
 
 JSON5 needed no new opts flags beyond narrowing JS_OPTS: object/array `{}[]`
 are the same char-matched bracket family as JS, `:`/`,` are already punct, and
