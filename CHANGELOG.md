@@ -14,7 +14,62 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
-## Unreleased — operator ROLE registry (PR #31)
+## Unreleased — `_tape()` retrofit onto the four older modes
+
+- `tokenize` (JS/Rust), `tokenizeXml`, and `tokenizeSql` each carried their own
+  inline copy of the pool/grow/emit tape builder from before `_tape()` existed
+  (`tokenizePy`/`tokenizeYaml` were the first to use it). All three now route
+  through the shared builder; the direct `linkArr[a] = b; linkArr[b] = a;`
+  writes scattered through bracket/tag/keyword linking became `link(a, b)`
+  calls, and a `poolOf(t)` accessor was added to `_tape()` so XML's
+  name-matched tag linking (which needs the interned pool slot, not just the
+  token index) still works without reaching into the builder's private
+  arrays. `tokenizeRust` needed no change — it already delegates to
+  `tokenize`. Verified lossless (`reconstruct() === src`) across all six
+  modes, plus `validate.js`, `tfreq.js`, and the `sfdiff` demo unaffected.
+
+## PR #34 — Python + YAML modes: the indentation bracket family (`:{` `}:`) · 2026-06-12
+
+- A third bracket family, after char-matched and name/keyword-matched:
+  **indentation-based**. `TAG_INDENT`/`TAG_DEDENT` are zero-width tokens at
+  the line's content start, linked like any bracket pair, rendered as the
+  digraphs `:{` / `}:`; suppressed inside `([{` (implicit line joining); EOF
+  closes whatever's still open.
+- `tokenizePy`: triple-quoted (multiline) and single-quoted (newline-bounded)
+  strings, string prefixes (`r/b/f/u` combinations), `:=` walrus → assignment
+  role, `->` → arrow role, role-grounded keyword bytes for the ones worth
+  naming (`def`, `del`, `raise`, `True`/`False`/`None`), generic keyword byte
+  for the rest.
+- `tokenizeYaml`: `#` comments, both quote styles (`''` is the single-quote
+  escape), `---`/`...` document markers (closing all open indent levels),
+  block scalars `|`/`>` consumed as ONE string token whose end is determined
+  by dedent — an indentation-parameterised end, the same §2a row as Rust's
+  raw strings.
+- Bug found during verification: the shared whitespace-run scanner consumed
+  straight through a newline into the next line's leading indent, so no
+  INDENT token ever fired (column was always measured from the wrong
+  position). Fixed by stopping ws runs immediately after their last
+  `\n`/`\r`, leaving the indent for the line-start branch to measure.
+- `tdump.js`/`tfreq.js` wired for `.py`/`.yaml`/`.yml`.
+
+## PR #33 — Add tfreq.js — the frequency data the byte-allocation rule consumes · 2026-06-12
+
+- A measurement tool, not a design change: walks a tree, lexes by extension,
+  and reports token counts per class, operator counts per ROLE (grouped by
+  tag byte, dialect spellings listed), and top keywords/builtins/identifiers.
+  Turns "which byte should this role get" from intuition into a data
+  question, per the §13e allocation rule.
+
+## PR #32 — Doc: the complete byte-allocation rule for operators · 2026-06-12
+
+- §13e written down in the user's own words: one byte is one role, roles
+  never share a byte; frequency decides which role gets the short byte; the
+  assignment is internal preference for reading the representation, not
+  semantics. PR #31 was merged mid-flight while pushing this follow-up —
+  re-rooted on `main` and pushed as its own PR rather than force-pushing over
+  the merge.
+
+## PR #31 — Operator ROLE registry: dialect spellings map to role bytes · 2026-06-12
 
 - **The byte answers "what does it do"; the pool answers "how it was written."**
   OPS reframed as the operator-role registry with C/JS-grounded canonical
