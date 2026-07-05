@@ -25,3 +25,33 @@ class Box:
 
     def render(self):
         return json.dumps({"items": self.items, "n": len(self.items)})
+
+
+# Keyword vocabulary sample: exercises every per-keyword mnemonic byte that
+# isn't already covered above — from/import, global/nonlocal, and/or/not/is,
+# with/as, lambda, elif/except/pass, assert, del/raise, True/False/None.
+from collections import OrderedDict as OD
+
+counter = 0
+
+
+def process(items, flag):
+    global counter
+    if flag and not items:
+        pass
+    elif flag or (items is None):
+        raise ValueError("items required")
+    try:
+        with open("data.txt") as fh:
+            data = fh.read()
+    except IOError:
+        data = None
+    assert data is not None, "must have data"
+
+    def bump():
+        nonlocal counter
+        counter += 1
+
+    square = lambda x: x * x
+    del items[0]
+    return OD(), True, False, None, square(counter)
