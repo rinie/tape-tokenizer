@@ -1,0 +1,991 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Inventory Service",
+    "version": "v1.0",
+    "description": "T-ONE - Inventory Service Integration Specification",
+    "contact": {
+      "name": "TMHLS"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://127.0.0.1"
+    }
+  ],
+  "paths": {
+    "/api/v1/loads/{id}": {
+      "get": {
+        "summary": "Get load information",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The ID of the load.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Load"
+                },
+                "examples": {
+                  "Load Information": {
+                    "value": {
+                      "id": "fa6b8101-4e12-4ec7-abe3-5fc4ca1c584b",
+                      "data": {
+                        "article": "Cola",
+                        "productionDate": "2020-11-26"
+                      },
+                      "dimensions": {
+                        "width": 800,
+                        "height": 144,
+                        "length": null
+                      },
+                      "weight": 120,
+                      "loadCarrierType": "euro",
+                      "stackability": "NonStackable",
+                      "location": {
+                        "name": "Location A",
+                        "position": 0,
+                        "positionQualifier": "Calculated"
+                      },
+                      "state": "Stored",
+                      "createdDateTime": "2019-08-24T14:15:22Z",
+                      "lastModifiedDateTime": "2019-08-24T14:15:22Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "get-api-v1-loads-id",
+        "tags": [
+          "Loads"
+        ],
+        "description": "Retrieves information about a single load based on the ID"
+      },
+      "patch": {
+        "summary": "Update load information",
+        "description": "Updates the information about an existing load\n\n**Supported Parameters**\n- Data\n- Dimensions\n- Weight",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The ID of the load to update.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Request-Id"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "requestBody": {
+          "description": "The JsonPatch document describing the changes to apply.",
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PatchOperation"
+                }
+              },
+              "examples": {
+                "Update weight and width": {
+                  "value": [
+                    {
+                      "op": "replace",
+                      "path": "/weight",
+                      "value": 10
+                    },
+                    {
+                      "op": "replace",
+                      "path": "/dimensions/width",
+                      "value": 1200
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Load"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "examples": {
+                  "Trying to update a non-existing parameter": {
+                    "value": {
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                      "title": "Bad Request",
+                      "status": 400,
+                      "traceId": "00-35febb0197f45a4a891cdea8825bbd56-1e37008e7c6dc843-00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "409": {
+            "description": "Conflict : There is no more space at the location for the given load or the load state is not _Stored_",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "Conflict": {
+                    "value": {
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                      "title": "Conflict",
+                      "status": 409,
+                      "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "patch-api-v1-loads-id",
+        "tags": [
+          "Loads"
+        ]
+      },
+      "delete": {
+        "summary": "Removes a load",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Id of the Load to remove. Example: R00001234",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The load has been removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Load"
+                },
+                "examples": {
+                  "The removed load": {
+                    "value": {
+                      "id": "fa6b8101-4e12-4ec7-abe3-5fc4ca1c584b",
+                      "data": {
+                        "article": "Cola",
+                        "productionDate": "2020-11-26"
+                      },
+                      "dimensions": {
+                        "width": 800,
+                        "height": 144,
+                        "length": null
+                      },
+                      "weight": 120,
+                      "loadCarrierType": "euro",
+                      "stackability": "NonStackable",
+                      "location": {
+                        "name": "Location A",
+                        "position": 0,
+                        "positionQualifier": "Calculated"
+                      },
+                      "state": "Stored",
+                      "createdDateTime": "2019-08-24T14:15:22Z",
+                      "lastModifiedDateTime": "2019-08-24T14:15:22Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/Not-Found"
+          },
+          "409": {
+            "description": "Conflict : Load is not in _Stored_ state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "Conflict": {
+                    "value": {
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                      "title": "Conflict",
+                      "status": 409,
+                      "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "delete-api-v1-loads-id",
+        "tags": [
+          "Loads"
+        ],
+        "description": "Removes the information about a single load based on the ID"
+      },
+      "parameters": [
+        {
+          "schema": {
+            "type": "string"
+          },
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The ID of the load"
+        }
+      ]
+    },
+    "/api/v1/loads": {
+      "get": {
+        "summary": "Get loads",
+        "parameters": [
+          {
+            "name": "Ids",
+            "in": "query",
+            "description": "Filter on loads with these ids",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Filter on loads with these ids",
+              "uniqueItems": true,
+              "minItems": 0
+            }
+          },
+          {
+            "name": "LocationNames",
+            "in": "query",
+            "description": "Filter on loads with these location names",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Filter on loads with these location names",
+              "uniqueItems": true,
+              "minItems": 0
+            }
+          },
+          {
+            "name": "Filters",
+            "in": "query",
+            "description": "Filter on loads with these data filters",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Filter on loads with these data filters",
+              "uniqueItems": true,
+              "minItems": 0
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Load"
+                  }
+                },
+                "examples": {
+                  "An array of loads": {
+                    "value": [
+                      {
+                        "id": "fa6b8101-4e12-4ec7-abe3-5fc4ca1c584b",
+                        "data": {
+                          "article": "Cola",
+                          "productionDate": "2020-11-26"
+                        },
+                        "dimensions": {
+                          "width": 800,
+                          "height": 144,
+                          "length": null
+                        },
+                        "weight": 120,
+                        "loadCarrierType": "euro",
+                        "stackability": "NonStackable",
+                        "location": {
+                          "name": "Location A",
+                          "position": 0,
+                          "positionQualifier": "Calculated"
+                        },
+                        "state": "Stored",
+                        "createdDateTime": "2019-08-24T14:15:22Z",
+                        "lastModifiedDateTime": "2019-08-24T14:15:22Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "get-api-v1-loads",
+        "tags": [
+          "Loads"
+        ],
+        "description": "Returns all the existing loads in the system matching the query."
+      },
+      "post": {
+        "summary": "Add new load",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Request-Id"
+          },
+          {
+            "$ref": "#/components/parameters/Traceparent"
+          }
+        ],
+        "requestBody": {
+          "description": "The load to add",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Load"
+              },
+              "examples": {
+                "Adds load of cola to the system": {
+                  "value": {
+                    "data": {
+                      "article": "Cola",
+                      "productionDate": "2020-11-26"
+                    },
+                    "weight": 5.5,
+                    "loadCarrierType": "EURO",
+                    "location": {
+                      "name": "Location A"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Load"
+                },
+                "examples": {
+                  "The newly added load": {
+                    "value": {
+                      "id": "fa6b8101-4e12-4ec7-abe3-5fc4ca1c584b",
+                      "data": {
+                        "article": "Cola",
+                        "productionDate": "2020-11-26"
+                      },
+                      "dimensions": {
+                        "width": null,
+                        "height": null,
+                        "length": null
+                      },
+                      "weight": 5.5,
+                      "loadCarrierType": "EURO",
+                      "stackability": "NonStackable",
+                      "location": {
+                        "name": "Location A",
+                        "position": 0,
+                        "positionQualifier": "Calculated"
+                      },
+                      "state": "Stored",
+                      "createdDateTime": "2019-08-24T14:15:22Z",
+                      "lastModifiedDateTime": "2019-08-24T14:15:22Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "examples": {
+                  "The location object is not specified": {
+                    "value": {
+                      "errors": {
+                        "Location": [
+                          "The Location field is required."
+                        ]
+                      },
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                      "title": "One or more validation errors occurred.",
+                      "status": 400,
+                      "traceId": "00-5b46f2db83480248bd7ef2c578b2efd7-ab8595268a0bb44d-00"
+                    }
+                  },
+                  "The location name is not specified": {
+                    "value": {
+                      "errors": {
+                        "Location.Name": [
+                          "The Name field is required."
+                        ]
+                      },
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                      "title": "One or more validation errors occurred.",
+                      "status": 400,
+                      "traceId": "00-51d7b8350505044183665270b84c48fb-b1e93ed63c8d464b-00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "Conflict : There is no more space at the location for the given load. A load must be removed from the unload side of the location before a new one can be added",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "Conflict": {
+                    "value": {
+                      "type": "https://tools.ietf.org/html/rfc7231#section-6.5.8",
+                      "title": "Conflict",
+                      "status": 409,
+                      "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal-Server-Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Service-Unavailable"
+          }
+        },
+        "operationId": "post-api-v1-loads",
+        "tags": [
+          "Loads"
+        ],
+        "description": "Adds a new load to the system"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {},
+        "description": "Details about problem with the request or response"
+      },
+      "ValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": {}
+      },
+      "Load": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Represents a single load in the system",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "fa6b8101-4e12-4ec7-abe3-5fc4ca1c584b",
+            "readOnly": true
+          },
+          "data": {
+            "type": "object",
+            "nullable": true
+          },
+          "dimensions": {
+            "type": "object",
+            "properties": {
+              "width": {
+                "type": "integer",
+                "nullable": true
+              },
+              "height": {
+                "type": "integer",
+                "nullable": true
+              },
+              "length": {
+                "type": "integer",
+                "nullable": true
+              }
+            }
+          },
+          "weight": {
+            "type": "number",
+            "nullable": true
+          },
+          "loadCarrierType": {
+            "type": "string"
+          },
+          "stackability": {
+            "type": "string",
+            "enum": [
+              "NonStackable",
+              "FullyStackable",
+              "FloorStackable",
+              "TopStackable"
+            ],
+            "default": "NonStackable"
+          },
+          "location": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "position": {
+                "type": "integer",
+                "readOnly": true
+              },
+              "positionQualifier": {
+                "type": "string",
+                "enum": [
+                  "Calculated",
+                  "Actual"
+                ],
+                "readOnly": true
+              }
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "Stored",
+              "Reserved",
+              "In Transit",
+              "Lost"
+            ],
+            "default": "Stored",
+            "readOnly": true
+          },
+          "createdDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "lastModifiedDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "loadCarrierType",
+          "location"
+        ]
+      },
+      "PatchOperation": {
+        "title": "PatchOperation",
+        "required": [
+          "op",
+          "path"
+        ],
+        "type": "object",
+        "allOf": [
+          {
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "A JSON Pointer path."
+              }
+            }
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "op",
+              "value"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "add",
+                  "replace",
+                  "test"
+                ],
+                "type": "string",
+                "description": "The operation to perform."
+              },
+              "value": {
+                "description": "The value to add, replace of test."
+              }
+            }
+          },
+          {
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "remove"
+                ],
+                "type": "string",
+                "description": "The operation to perform."
+              }
+            }
+          },
+          {
+            "required": [
+              "op",
+              "from"
+            ],
+            "properties": {
+              "op": {
+                "enum": [
+                  "move",
+                  "copy"
+                ],
+                "type": "string",
+                "description": "The operation to perform"
+              },
+              "from": {
+                "type": "string",
+                "description": "A JSON Pointer path pointing to the location to move/copy from."
+              }
+            }
+          }
+        ],
+        "externalDocs": {
+          "description": "JSON Patch Documentation",
+          "url": "https://jsonpatch.com"
+        },
+        "x-examples": {},
+        "description": ""
+      }
+    },
+    "securitySchemes": {
+      "OpenID": {
+        "type": "openIdConnect",
+        "openIdConnectUrl": "/auth/realms/T-ONE/.well-known/openid-configuration"
+      },
+      "oauth2": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "/auth/realms/T-ONE/protocol/openid-connect/token",
+            "scopes": {
+              "public.inventory": "Required for managing the inventory"
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Not-Found": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Not Found": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+                  "title": "Not Found",
+                  "status": 404,
+                  "traceId": "00-98a05ea57962d843ac4360fdf9984815-5197495a09b0e340-00"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Forbidden": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.3",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Unauthorized": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7235#section-3.1",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Internal-Server-Error": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Internal Server Error": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+                  "title": "An error occurred while processing your request.",
+                  "status": 500,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Service-Unavailable": {
+        "description": "Example response",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            },
+            "examples": {
+              "Service Unavailable": {
+                "value": {
+                  "type": "https://tools.ietf.org/html/rfc7231#section-6.6.4",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "traceId": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "Traceparent": {
+        "name": "Traceparent",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "example": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          "pattern": "^(?<version>\\d{2})-(?<traceId>[a-f0-9]{32})-(?<parentId>[a-f0-9]{16})-(?<traceFlags>\\d{2})$"
+        },
+        "description": "The traceparent header represents the incoming request in a tracing system in a common format, W3C Trace Context"
+      },
+      "Request-Id": {
+        "name": "Request-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "A unique ID that represents the incoming request. Duplicate requests will be discarded."
+      }
+    }
+  },
+  "security": [
+    {
+      "oauth2": [
+        "public.inventory"
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "name": "Loads"
+    }
+  ]
+}
