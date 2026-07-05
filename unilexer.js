@@ -291,49 +291,9 @@ class UniLexer {
 
   tokenize(src, opts = JS_OPTS) {
     const len = src.length;
-    const pools = KLASS_NAME.map(() => []);
-    const internMaps = KLASS_NAME.map((_, k) => (INTERNED.has(k) ? new Map() : null));
-
-    let cap = 1024;
-    let tagArr = new Uint8Array(cap);
-    let poolArr = new Uint32Array(cap);
-    let offArr = new Uint32Array(cap);
-    let linkArr = new Int32Array(cap).fill(-1);
-    let depthArr = new Uint32Array(cap);
-    let n = 0;
-
-    const grow = () => {
-      cap *= 2;
-      const a = new Uint8Array(cap); a.set(tagArr); tagArr = a;
-      const b = new Uint32Array(cap); b.set(poolArr); poolArr = b;
-      const c = new Uint32Array(cap); c.set(offArr); offArr = c;
-      const d = new Int32Array(cap).fill(-1); d.set(linkArr.subarray(0, n)); linkArr = d;
-      const e = new Uint32Array(cap); e.set(depthArr); depthArr = e;
-    };
-
-    const addToPool = (klass, lexeme, off) => {
-      const pool = pools[klass];
-      if (INTERNED.has(klass)) {
-        const m = internMaps[klass];
-        let idx = m.get(lexeme);
-        if (idx === undefined) { idx = pool.length; pool.push({ lexeme, occ: [] }); m.set(lexeme, idx); }
-        pool[idx].occ.push(off);
-        return idx;
-      }
-      const idx = pool.length;
-      pool.push({ lexeme, off });
-      return idx;
-    };
-
-    const emit = (tag, lexeme, off, depth) => {
-      if (n >= cap) grow();
-      tagArr[n] = tag;
-      poolArr[n] = addToPool(TAG_CLASS[tag], lexeme, off);
-      offArr[n] = off;
-      linkArr[n] = -1;
-      depthArr[n] = depth;
-      return n++;
-    };
+    const tp = this._tape();
+    const emit = (tag, lexeme, off, depth) => tp.emit(tag, TAG_CLASS[tag], lexeme, off, depth);
+    const { link } = tp;
 
     const stack = [];   // open brackets: { idx, tag }
     let depth = 0;
@@ -445,8 +405,7 @@ class UniLexer {
           const top = stack[stack.length - 1];
           if (top && CLOSE_OF[top.tag] === tag) {
             stack.pop();
-            linkArr[top.idx] = idx;
-            linkArr[idx] = top.idx;
+            link(top.idx, idx);
           }
           // mismatch / orphan: link stays -1 — tolerant, reported via repairMap
         }
@@ -464,7 +423,7 @@ class UniLexer {
       i = end;
     }
 
-    return this._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, TAG_CLASS, false);
+    return tp.finish(this, src, TAG_CLASS, false);
   }
 
   // ── XML mode — same uniform tape, structural-role mnemonics ───────────────
@@ -475,49 +434,8 @@ class UniLexer {
   // link array, tolerantly (no fault on improper nesting or orphans).
   tokenizeXml(src) {
     const len = src.length;
-    const pools = KLASS_NAME.map(() => []);
-    const internMaps = KLASS_NAME.map((_, k) => (INTERNED.has(k) ? new Map() : null));
-
-    let cap = 1024;
-    let tagArr = new Uint8Array(cap);
-    let poolArr = new Uint32Array(cap);
-    let offArr = new Uint32Array(cap);
-    let linkArr = new Int32Array(cap).fill(-1);
-    let depthArr = new Uint32Array(cap);
-    let n = 0;
-
-    const grow = () => {
-      cap *= 2;
-      const a = new Uint8Array(cap); a.set(tagArr); tagArr = a;
-      const b = new Uint32Array(cap); b.set(poolArr); poolArr = b;
-      const c = new Uint32Array(cap); c.set(offArr); offArr = c;
-      const d = new Int32Array(cap).fill(-1); d.set(linkArr.subarray(0, n)); linkArr = d;
-      const e = new Uint32Array(cap); e.set(depthArr); depthArr = e;
-    };
-
-    const addToPool = (klass, lexeme, off) => {
-      const pool = pools[klass];
-      if (INTERNED.has(klass)) {
-        const m = internMaps[klass];
-        let idx = m.get(lexeme);
-        if (idx === undefined) { idx = pool.length; pool.push({ lexeme, occ: [] }); m.set(lexeme, idx); }
-        pool[idx].occ.push(off);
-        return idx;
-      }
-      const idx = pool.length;
-      pool.push({ lexeme, off });
-      return idx;
-    };
-
-    const emit = (tag, klass, lexeme, off, depth) => {
-      if (n >= cap) grow();
-      tagArr[n] = tag;
-      poolArr[n] = addToPool(klass, lexeme, off);
-      offArr[n] = off;
-      linkArr[n] = -1;
-      depthArr[n] = depth;
-      return n++;
-    };
+    const tp = this._tape();
+    const { emit, link } = tp;
 
     const isNameChar = (c) => (c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A) ||
       (c >= 0x30 && c <= 0x39) || c === 0x2D || c === 0x5F || c === 0x3A || c === 0x2E;
@@ -570,7 +488,7 @@ class UniLexer {
           // attribute-less complete self-closing tag <br/> — ONE token, self-linked
           if (!isClose && src.charCodeAt(j) === 0x2F && src.charCodeAt(j + 1) === 0x3E) {
             const idx = emit(0x2F, KLASS.TAG, name, start, depth);   // '/'
-            linkArr[idx] = idx;
+            link(idx, idx);
             i = j + 2; continue;
           }
           if (isClose) {
@@ -578,16 +496,15 @@ class UniLexer {
             const idx = emit(0x7D, KLASS.TAG, name, start, depth);   // '}'
             // tolerant name-match: nearest open with the same pool slot
             for (let s = stack.length - 1; s >= 0; s--) {
-              if (stack[s].poolIdx === poolArr[idx]) {
-                linkArr[stack[s].idx] = idx;
-                linkArr[idx] = stack[s].idx;
+              if (stack[s].poolIdx === tp.poolOf(idx)) {
+                link(stack[s].idx, idx);
                 stack.splice(s, 1);
                 break;
               }
             }
           } else {
             const idx = emit(0x7B, KLASS.TAG, name, start, depth);   // '{'
-            stack.push({ idx, poolIdx: poolArr[idx] });
+            stack.push({ idx, poolIdx: tp.poolOf(idx) });
             depth++;
           }
           // '>' directly after the name (no attributes): the closing separator
@@ -625,7 +542,7 @@ class UniLexer {
         depth = depth > 0 ? depth - 1 : 0;
         const idx = emit(0x3E, KLASS.PUNCT, '/>', start, depth);
         const top = stack.pop();
-        if (top) { linkArr[top.idx] = idx; linkArr[idx] = top.idx; }
+        if (top) link(top.idx, idx);
         i += 2; inTag = false; continue;
       }
       if (isNameChar(c)) {                                           // attr name
@@ -638,7 +555,7 @@ class UniLexer {
       i++;
     }
 
-    return this._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, TAG_CLASS_XML, true);
+    return tp.finish(this, src, TAG_CLASS_XML, true);
   }
 
   // Split a whitespace run [from,to) into NEWLINE tokens (TAG_NL — each
@@ -659,8 +576,8 @@ class UniLexer {
     }
   }
 
-  // Shared tape builder for the newer modes (the older three keep their inline
-  // copies until the consolidation sweep reaches them).
+  // Shared tape builder — every mode (tokenize/tokenizeXml/tokenizeSql/
+  // tokenizePy/tokenizeYaml) routes through this one emit/link/finish trio.
   _tape() {
     const pools = KLASS_NAME.map(() => []);
     const internMaps = KLASS_NAME.map((_, k) => (INTERNED.has(k) ? new Map() : null));
@@ -702,9 +619,10 @@ class UniLexer {
       return n++;
     };
     const link = (a, b) => { linkArr[a] = b; linkArr[b] = a; };
+    const poolOf = (t) => poolArr[t];
     const finish = (self, src, classTable, spanRaw) =>
       self._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, classTable, spanRaw);
-    return { emit, link, finish };
+    return { emit, link, poolOf, finish };
   }
 
   // ── Python mode — the INDENTATION bracket family ───────────────────────────
@@ -1037,47 +955,8 @@ class UniLexer {
     const d = SQL_DIALECTS[dialect];
     if (!d) throw new Error(`unknown SQL dialect '${dialect}' (have: ${Object.keys(SQL_DIALECTS).join(', ')})`);
     const len = src.length;
-    const pools = KLASS_NAME.map(() => []);
-    const internMaps = KLASS_NAME.map((_, k) => (INTERNED.has(k) ? new Map() : null));
-
-    let cap = 1024;
-    let tagArr = new Uint8Array(cap);
-    let poolArr = new Uint32Array(cap);
-    let offArr = new Uint32Array(cap);
-    let linkArr = new Int32Array(cap).fill(-1);
-    let depthArr = new Uint32Array(cap);
-    let n = 0;
-
-    const grow = () => {
-      cap *= 2;
-      const a = new Uint8Array(cap); a.set(tagArr); tagArr = a;
-      const b = new Uint32Array(cap); b.set(poolArr); poolArr = b;
-      const c = new Uint32Array(cap); c.set(offArr); offArr = c;
-      const e = new Int32Array(cap).fill(-1); e.set(linkArr.subarray(0, n)); linkArr = e;
-      const f = new Uint32Array(cap); f.set(depthArr); depthArr = f;
-    };
-    const addToPool = (klass, lexeme, off) => {
-      const pool = pools[klass];
-      if (INTERNED.has(klass)) {
-        const m = internMaps[klass];
-        let idx = m.get(lexeme);
-        if (idx === undefined) { idx = pool.length; pool.push({ lexeme, occ: [] }); m.set(lexeme, idx); }
-        pool[idx].occ.push(off);
-        return idx;
-      }
-      const idx = pool.length;
-      pool.push({ lexeme, off });
-      return idx;
-    };
-    const emit = (tag, klass, lexeme, off, depth) => {
-      if (n >= cap) grow();
-      tagArr[n] = tag;
-      poolArr[n] = addToPool(klass, lexeme, off);
-      offArr[n] = off;
-      linkArr[n] = -1;
-      depthArr[n] = depth;
-      return n++;
-    };
+    const tp = this._tape();
+    const { emit, link } = tp;
 
     const kwStack = [];     // open block keywords: { idx, kindId }  (name-matched)
     const brStack = [];     // ( [ parens/brackets (LIFO)
@@ -1157,7 +1036,7 @@ class UniLexer {
             closes = top.kind; openAt = top.idx;
           }
           const idx = emit(0x7D, KLASS.TAG, closes ?? 'end', start, depth);
-          if (openAt !== -1) { linkArr[openAt] = idx; linkArr[idx] = openAt; }
+          if (openAt !== -1) link(openAt, idx);
           i = end; continue;
         }
 
@@ -1193,7 +1072,7 @@ class UniLexer {
         const top = brStack[brStack.length - 1];
         if (top && top.close === c) {
           brStack.pop();
-          linkArr[top.idx] = idx; linkArr[idx] = top.idx;
+          link(top.idx, idx);
         }
         i++; continue;
       }
@@ -1221,7 +1100,7 @@ class UniLexer {
       i++;
     }
 
-    return this._result(src, tagArr, poolArr, offArr, linkArr, depthArr, n, pools, TAG_CLASS_SQL, true);
+    return tp.finish(this, src, TAG_CLASS_SQL, true);
   }
 
   // Oracle string: '…' where '' (doubled quote) is the escape; may span lines.
