@@ -14,7 +14,30 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
-## Unreleased — the CSV + shared "imported keyword" byte, for all three languages
+## Unreleased — tfind.js: zoom into a tape by content, not depth
+
+- New tool, `tfind.js`, answering the question `--outline` can't: "where
+  does THIS text live in a file too big to peel depth-layer by depth-layer,
+  and what's the natural unit around it." For every token matching a
+  substring: a breadcrumb of enclosing containers (innermost first, each
+  labelled by its own JSON key — the OpenAPI/schema convention — or by a
+  `name`/`title` sibling — the Postman-collection convention, neither
+  guessed at semantically, both read straight off the key/value and
+  sibling structure already on the tape), then the nearest labelled
+  ancestor's exact source text (lossless, the same offset-span slice
+  §13b already uses elsewhere).
+- `--up N` widens the zoom past the nearest label when it's too narrow (in
+  deeply nested JSON almost every level is technically "keyed," so the
+  nearest one alone isn't always the meaningful unit) — the same "raise to
+  peel" ergonomics `--outline` already has, applied to content-search
+  instead of depth.
+- Verified on both labelling conventions: a Postman request found via its
+  `name` sibling three levels up from a URL match (surfacing 2 more
+  matches — the same URL echoed in two recorded example responses'
+  `originalRequest`, which the breadcrumb alone makes obvious); an AGV
+  OpenAPI example value found via its enclosing schema's own JSON key.
+
+## PR #40 — CSV-loaded keyword vocabulary + shared imported-keyword byte (SQL, Rust, Python) · 2026-07-05
 
 - Investigated (at the user's request) a CSV-driven keyword table before
   building anything: cross-checking SQL's 86 Oracle keywords against every
@@ -55,6 +78,36 @@ direct bytes for closed vocabularies, indirection only for real variation).
   external source" move `harvest.js` already makes
   for TextMate grammars. One rule: append, don't insert — inserting a word
   mid-file shifts every id after it; appending only ever adds a new one.
+
+## PR #41 — Add openapi-exploration folder: AGV specs + Transsmart collection · 2026-07-05
+
+- New `openapi-exploration/` folder: the 5 hand-written AGV OpenAPI specs
+  (conventional per-resource REST, a contrast against HostNet's single
+  generic-endpoint + 30-way `oneOf`), and a real Transsmart APIv2 Postman
+  collection export (~3.4MB, 46k tokens) — kept as raw Postman JSON rather
+  than converted to OpenAPI, since it's already lossless through
+  `tokenizeJson5` and `--outline` works on it directly.
+
+## PR #42 — README: real --outline example against the Transsmart collection · 2026-07-05
+
+- Added a concrete `--outline 2` example against the Transsmart collection
+  to the Quick start section, verified to match a fresh run exactly.
+
+## PR #43 — openapi-exploration: per-folder README with --outline output · 2026-07-05
+
+- `agv/README.md`: `--outline 3` for each of the 5 specs. `transsmart/
+  README.md`: `--outline 2` for the collection top level plus the peeled
+  folder/request tree (9→10, corrected — see #44).
+
+## PR #44 — transsmart README: add --outline depth 3 and 4 output · 2026-07-05
+
+- Depth 3: collection metadata plus each of the 10 top-level sections
+  folded to span size ("2.0 Shipment management" the largest at 13113
+  tokens, "0. Introduction" the smallest at 116). Depth 4: opens each
+  section to name/item/description/auth/event — each section's
+  description links back to its matching devdocs.transsmart.com anchor,
+  and every section but Introduction/Reports carries its own auth
+  override.
 
 ## PR #39 — per-keyword mnemonic bytes for Python (PY_KEYWORDS) · 2026-07-05
 

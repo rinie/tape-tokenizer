@@ -271,3 +271,31 @@ collection and the prose docs are cross-referenced, not two independent
 sources), and most sections carry their own `auth` override — only
 "0. Introduction" and "9.0 Reports" don't, inheriting the collection-level
 bearer auth shown at the top instead.
+
+## Zooming in on one request instead of peeling by depth
+
+`--outline` folds by DEPTH, which gets tedious once you know what you want
+but not where it is — e.g. finding the request that hits
+`{{base_url}}/v2/shipments/{{account}}/PRINT?rawJob=true` would mean
+peeling all the way through "2.0 Shipment management" -> "2.1 Booking a
+shipment" -> one of five requests. `tfind.js` zooms by CONTENT instead:
+
+```
+$ node tfind.js -u 2 "PRINT?rawJob=true" "Transsmart APIv2.postman_collection.json"
+3 match(es) for "PRINT?rawJob=true"
+
+── token 3437: "{{base_url}}/v2/shipments/{{account}}/PRINT?rawJob=true" ──
+breadcrumb (innermost first): url <- request <- 2.1.2 Book and retrieve documents <- item <- 2.1 Booking a shipment <- item <- 2.0 Shipment management <- item <- #0
+zoomed to labelled ancestor #3 (0 = nearest) ("2.1.2 Book and retrieve documents", tokens 3256..4156):
+
+{
+  "name": "2.1.2 Book and retrieve documents",
+  ...
+```
+
+The breadcrumb alone (drop `-u`, the default zooms to the nearest labelled
+ancestor — here that's `url`, the request's URL breakdown object, often too
+narrow) already answers "where does this live"; `-u N` widens the zoom to
+the Nth ancestor out. There were 3 matches, not 1 — the other two are the
+recorded example *responses*' `originalRequest.url` echoing the same URL,
+which the breadcrumb makes obvious without opening each one.

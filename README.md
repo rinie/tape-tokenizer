@@ -47,6 +47,11 @@ node tdump.js --outline 2 "openapi-exploration\transsmart\Transsmart APIv2.postm
                                 :: a real 3.4MB/46k-token Postman collection, still
                                 :: readable: top level folds to info/item/auth/event
 node tfreq.js src\              :: token/operator-role frequencies over a tree
+node tfind.js -u 2 "PRINT?rawJob=true" "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"
+                                :: zoom by CONTENT instead of depth — breadcrumb of
+                                :: enclosing containers, then the request the match
+                                :: belongs to in full (--up widens past a narrow
+                                :: nearest ancestor; drop it to see the breadcrumb first)
 node scan.js --help             :: full usage
 ```
 
@@ -66,6 +71,10 @@ tdump.js             token dump: pool index/value pairs; full | brief | signal
                      | outline (folded breadth-first view, any of the 7 modes)
 tfreq.js             token frequencies (class / op-role / keyword) for tuning
                      the byte allocation — the data the 13e rule consumes
+tfind.js             zoom into a tape by CONTENT, not depth: breadcrumb of
+                     enclosing containers + the nearest named/keyed
+                     ancestor in full — for finding one thing in a spec
+                     too big to peel --outline layer by layer
 unilexer.js          ONE lexer, ONE tape: value pools + structural links in a
                      single pass; tag byte IS the mnemonic
                      (JS, XML, Rust, Oracle SQL/PLSQL, Python, YAML,
