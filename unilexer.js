@@ -280,7 +280,41 @@ const RUST_OPTS = {
                          // which the class table reads as COMMENT.
 };
 
+// JSON5 is JS's tokenize() with everything narrowed, never widened: the ONLY
+// bare words are true/false/null (reusing JS's own bytes — no third meaning
+// for T/u/0); no regex, no templates, no Rust hooks. Everything JSON5 is
+// MORE permissive about than strict JSON — single-quoted strings, hex ints,
+// // and /* */ comments, unquoted identifier keys, trailing commas — tokenize()
+// already accepts unconditionally, so a plain-JSON file tokenizes identically
+// under this table: JSON is a subset, not a separate mode. A stricter table
+// that FLAGS the JSON5-only relaxations (rather than silently accepting them)
+// is future work — a validation pass over this same tape, not a new lexer.
+const JSON5_KEYWORDS = new Map([
+  ['true',  T.KW_TRUE],
+  ['false', T.KW_FALSE],
+  ['null',  T.KW_NULL],
+]);
+
+const JSON5_OPTS = {
+  keywords: JSON5_KEYWORDS,
+  regex: false,
+  templates: false,      // JSON5 strings are " or ' — never `
+  charLifetimes: false,
+  rawStrings: false,
+  nestedComments: false,
+};
+
 class UniLexer {
+  // JSON5 mode (also accepts plain JSON — see JSON5_OPTS above): object/array
+  // brackets are the same char-matched family as JS's { } [ ], ':' and ','
+  // are already punct, strings/numbers/comments already tolerant enough.
+  // Object keys carry NO distinct byte from string values — "is this a key"
+  // is purely positional (first of a pair inside '{', followed by ':'), which
+  // a breadth-first visitor reads straight off the tape without the lexer
+  // needing to overload anything for it.
+  tokenizeJson5(src) {
+    return this.tokenize(src, JSON5_OPTS);
+  }
   // Rust mode: the §2a parameterised-end row in running code — raw strings
   // r"…" / r#"…"# / r##"…"## (closer = '"' + the CAPTURED hash count, no
   // escapes), raw identifiers r#match, byte/C-string prefixes b"…" br#"…"#

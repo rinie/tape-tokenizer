@@ -14,7 +14,26 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
-## Unreleased — `_tape()` retrofit onto the four older modes
+## Unreleased — JSON5 mode (also accepts plain JSON)
+
+- `tokenizeJson5` is `tokenize()` narrowed, not a new scan loop: object/array
+  `{}[]` are the same char-matched bracket family as JS, `:`/`,` are already
+  punct, and `true`/`false`/`null` reuse JS's own keyword bytes — a 3-entry
+  keyword map is the entire vocabulary table.
+- JSON5's relaxations over strict JSON (single-quoted strings, hex ints,
+  unquoted identifier keys, `//`/`/* */` comments, trailing commas) were
+  already things `tokenize()` accepted unconditionally, so plain JSON
+  tokenizes identically under the same table — JSON is a subset, not a
+  separate mode. A stricter table that flags those relaxations rather than
+  silently accepting them is deferred (a validation pass over the same tape).
+- Object keys carry no distinct tag byte from string values — "is this a
+  key" is purely positional (first of a pair inside `{`, followed by `:`),
+  recoverable from the tape without the lexer overloading anything for it.
+- New fixtures `samples/sample.json` (strict) and `samples/sample.json5`
+  (comments, unquoted keys, trailing commas, hex/leading-decimal numbers,
+  mixed quoting); `tdump.js`/`tfreq.js` wired for `.json`/`.json5`/`.jsonc`.
+
+## PR #35 — `_tape()` retrofit onto the four older modes · 2026-06-12
 
 - `tokenize` (JS/Rust), `tokenizeXml`, and `tokenizeSql` each carried their own
   inline copy of the pool/grow/emit tape builder from before `_tape()` existed

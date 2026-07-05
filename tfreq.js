@@ -26,6 +26,7 @@ const EXT_LANG = {
   '.sql': 'sql', '.pks': 'sql', '.pkb': 'sql', '.plsql': 'sql',
   '.py': 'py',
   '.yaml': 'yaml', '.yml': 'yaml',
+  '.json': 'json5', '.json5': 'json5', '.jsonc': 'json5',
 };
 
 const HELP = `tape-tokenizer tfreq — token frequencies for byte-allocation tuning (v${VERSION})
@@ -95,6 +96,7 @@ function analyze(files) {
       : lang === 'sql' ? lx.tokenizeSql(src)
       : lang === 'py' ? lx.tokenizePy(src)
       : lang === 'yaml' ? lx.tokenizeYaml(src)
+      : lang === 'json5' ? lx.tokenizeJson5(src)
       : lx.tokenize(src);
     files_++; tokens += u.length; bytes += src.length;
 
