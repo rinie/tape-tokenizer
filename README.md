@@ -43,6 +43,9 @@ node sfdiff.js old.js new.js    :: subforest diff — whole units, not line delt
 node tdump.js app.js            :: token dump (pool index/value; quiet whitespace)
 node tdump.js --signal app.js   :: significant tokens only; --full = revertible
 node tdump.js --outline 2 spec.json :: folded breadth-first view, any of the 7 modes
+node tdump.js --outline 2 "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"
+                                :: a real 3.4MB/46k-token Postman collection, still
+                                :: readable: top level folds to info/item/auth/event
 node tfreq.js src\              :: token/operator-role frequencies over a tree
 node scan.js --help             :: full usage
 ```
@@ -75,6 +78,9 @@ tokenizer.js         the original flat value-token tape (historical; demo-only)
 token-tags.js        the mnemonic tag-byte scheme (shared by unilexer + tokenizer)
 demos/               runnable demos for each piece (node demos/demo-*.js)
 samples/             real files used for validation (incl. a C TextMate grammar)
+openapi-exploration/ real-world OpenAPI/API specs (AGV services, a Transsmart
+                     Postman collection) for exercising --outline beyond
+                     samples/-sized fixtures
 *-keywords*.csv      runtime-loaded keyword vocabulary, one word per line —
                      rust-keywords.csv, python-keywords.csv,
                      sql-keywords-oracle.csv (see unilexer.js's
