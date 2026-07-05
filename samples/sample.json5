@@ -1,0 +1,19 @@
+// a JSON5 file: comments, unquoted keys, trailing commas, single quotes,
+// hex ints and a leading-decimal float — everything strict JSON rejects.
+{
+  name: 'tape-tokenizer',
+  version: "0.1.0",
+  private: true,
+  "quoted key": null,
+  count: 0x1F,
+  ratio: .5,
+  tags: ['lexer', 'tape', 'json5',],
+  nested: {
+    ok: true,
+    empty: {},
+    list: [1, 2, 3],
+  },
+  /* block comment
+     spanning lines */
+  trailing: 'comma above',
+}

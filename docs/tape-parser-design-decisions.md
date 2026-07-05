@@ -566,6 +566,22 @@ foreseen as word-set + quoting entries, not scanner changes. Oracle lexical
 specifics: '' doubled-quote escape, q'[…]' q-quoting (another 2a parameterised
 end), "Quoted" = identifier not string, := <> .. operators.
 
+JSON5 needed no new opts flags beyond narrowing JS_OPTS: object/array `{}[]`
+are the same char-matched bracket family as JS, `:`/`,` are already punct, and
+`true`/`false`/`null` reuse JS's own keyword bytes (T/u/0) via a 3-entry
+keyword map — everything else routes through `tokenize()` unchanged. The
+useful direction here was narrowing, not widening: JSON5's relaxations over
+strict JSON (single-quoted strings, hex ints, unquoted identifier keys, `//`
+and `/* */` comments, trailing commas) are all things `tokenize()` *already*
+accepted, so plain JSON tokenizes identically under the same table — JSON is
+a subset of JSON5, not a separate mode. A stricter table that flags those
+relaxations as findings (rather than silently accepting them) is deferred —
+it is a validation pass over the same tape, not a new lexer. Object keys
+carry no distinct tag byte from string values: "is this a key" is purely
+positional (first of a pair inside `{`, followed by `:`), and inventing a
+byte for something the tape's structure already encodes would be the same
+overloading mistake the `:=`-vs-`=` case taught against.
+
 ### 13f. Whitespace association & the dump views — projections, not tape columns
 
 > **Spiked** — `tdump.js`; defuse migration in the same PR.

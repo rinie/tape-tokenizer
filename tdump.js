@@ -50,11 +50,11 @@ OPTIONS
                    kind — quotes would be noise); whitespace as compact indent
                    deltas (+\\n, -\\n, +2\\n — sign first), quiet when unchanged.
       --signal     Significant tokens only — no whitespace, no comments.
-  -l, --lang <l>   Force language: js | xml | rust | sql | py | yaml.
+  -l, --lang <l>   Force language: js | xml | rust | sql | py | yaml | json5.
                    Default: detect from the file
                    extension (.xml/.html/.htm/.svg -> xml, .rs -> rust,
                    .sql/.pks/.pkb -> sql [Oracle], .py -> py,
-                   .yaml/.yml -> yaml, else js).
+                   .yaml/.yml -> yaml, .json/.json5/.jsonc -> json5, else js).
   -h, --help       Show this help and exit.
   -V, --version    Print version and exit.
 
@@ -172,6 +172,7 @@ function dumpTokens(src, mode = 'brief', lang = 'js') {
     : lang === 'sql' ? new UniLexer().tokenizeSql(src)
     : lang === 'py' ? new UniLexer().tokenizePy(src)
     : lang === 'yaml' ? new UniLexer().tokenizeYaml(src)
+    : lang === 'json5' ? new UniLexer().tokenizeJson5(src)
     : new UniLexer().tokenize(src);
   const unit = detectIndentUnit(src);
   const state = { units: 0, afterNl: true };   // file start counts as a line start
@@ -234,7 +235,7 @@ function main() {
 
   const mode = values.full ? 'full' : values.signal ? 'signal' : 'brief';
   let lang = values.lang;
-  if (lang && !['js', 'xml', 'rust', 'sql', 'py', 'yaml'].includes(lang)) fail(`unknown --lang '${lang}' (expected js | xml | rust | sql | py | yaml)`);
+  if (lang && !['js', 'xml', 'rust', 'sql', 'py', 'yaml', 'json5'].includes(lang)) fail(`unknown --lang '${lang}' (expected js | xml | rust | sql | py | yaml | json5)`);
   if (!lang) {
     const ext = positionals[0] === '-' ? '' : extname(positionals[0]).toLowerCase();
     lang = ['.xml', '.html', '.htm', '.svg'].includes(ext) ? 'xml'
@@ -242,6 +243,7 @@ function main() {
       : ['.sql', '.pks', '.pkb', '.plsql'].includes(ext) ? 'sql'
       : ext === '.py' ? 'py'
       : ['.yaml', '.yml'].includes(ext) ? 'yaml'
+      : ['.json', '.json5', '.jsonc'].includes(ext) ? 'json5'
       : 'js';
   }
   let src;
