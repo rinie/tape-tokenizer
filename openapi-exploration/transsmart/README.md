@@ -299,3 +299,45 @@ narrow) already answers "where does this live"; `-u N` widens the zoom to
 the Nth ancestor out. There were 3 matches, not 1 — the other two are the
 recorded example *responses*' `originalRequest.url` echoing the same URL,
 which the breadcrumb makes obvious without opening each one.
+
+### A cross-cutting search: `insurance`
+
+`node tfind.js -c "insurance" "Transsmart APIv2.postman_collection.json"` —
+breadcrumb-only, 7 matches spanning three different requests:
+
+```
+7 match(es) for "insurance"
+
+── token 1195: "[{\r\n\t\"reference\": \"postman-{{$timestamp}}\",\r\n    \"carrier\": \"DHP\",… ──
+breadcrumb (innermost first): body <- request <- 2.1.1 Book a shipment <- item <- 2.1 Booking a shipment <- item <- 2.0 Shipment management <- item <- #0
+
+── token 14868: "3.2 Calculating insurance" ──
+breadcrumb (innermost first): 3.2 Calculating insurance <- item <- 3.0 Rates calculation <- item <- #0
+
+── token 15059: "{{base_url}}/v2/rates/{{account}}/insurance?currency=EUR&countryFrom=NL&country… ──
+breadcrumb (innermost first): url <- request <- 3.2 Calculating insurance <- item <- 3.0 Rates calculation <- item <- #0
+
+── token 15094: "insurance" ──
+breadcrumb (innermost first): path <- url <- request <- 3.2 Calculating insurance <- item <- 3.0 Rates calculation <- item <- #0
+
+── token 15761: "Get insurance information" ──
+breadcrumb (innermost first): Get insurance information <- item <- 3.0 Rates calculation <- item <- #0
+
+── token 15952: "{{base_url}}/v2/rates/{{account}}/insurance/InsuranceTest1" ──
+breadcrumb (innermost first): url <- request <- Get insurance information <- item <- 3.0 Rates calculation <- item <- #0
+
+── token 15987: "insurance" ──
+breadcrumb (innermost first): path <- url <- request <- Get insurance information <- item <- 3.0 Rates calculation <- item <- #0
+```
+
+Two honest things this surfaces. First, the intended matches: "3.2
+Calculating insurance" and "Get insurance information" are both distinct
+requests under "3.0 Rates calculation", found via their name, their URL,
+and their URL's parsed `path` segments (Postman decomposes a URL into
+`raw`/`host`/`path`/`query`, so one logical match can show up under several
+sibling keys). Second, a real limitation: token 1195 is the ENTIRE raw
+request body of "2.1.1 Book a shipment" — Postman stores a body as one
+opaque string, not structured JSON, so a substring match inside it can't
+zoom any further than that one (very long — the header line truncates it
+at 80 chars) string token. `tfind.js` reports it honestly rather than
+guessing at internal structure the tape doesn't actually have.
