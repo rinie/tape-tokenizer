@@ -180,7 +180,11 @@ function main() {
   const out = [];
   out.push(`${matches.length} match(es) for ${JSON.stringify(needle)}`);
   for (const m of matches) {
-    out.push('', `── token ${m}: ${u.lexemeOf(m)} ──`);
+    const lex = u.lexemeOf(m);
+    const shownLex = lex.length > 80 ? lex.slice(0, 80) + '…' : lex;  // a matched
+    // token can be an entire raw request body (Postman stores it as ONE
+    // string) — truncate the header line, the zoomed text below is unaffected
+    out.push('', `── token ${m}: ${shownLex} ──`);
     const chain = enclosers(u, n, m);
     out.push('breadcrumb (innermost first): ' + (chain.map((c) => c.label ?? `#${c.open}`).join(' <- ') || '(top level)'));
 
