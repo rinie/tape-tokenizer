@@ -14,6 +14,25 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — XML: DOCTYPE internal subset stays one declaration (#48)
+
+- Setback, found by comparing against another XML viewer: a
+  `<!DOCTYPE root [ … ]>` ended at the first `>` inside its internal subset
+  (the one closing `<!ENTITY …>`), so the rest of the subset leaked onto the
+  tape as a `text` token. `scan.js` still said clean — `lexical-scanner.js`
+  had the same bug and silently skipped the leftover as text — and the
+  lossless check couldn't catch it, because the text token carried the
+  missing bytes. A wrong split that round-trips is still a wrong split.
+- Both scanners now share one rule (`xmlDeclEnd`, duplicated so
+  `lexical-scanner.js` stays import-free): a DOCTYPE's `[ … ]` is opaque,
+  with quotes, comments and PIs inside it skipped so their `>` / `]` don't
+  end it. Case-insensitive `<!doctype`.
+- An unterminated internal subset is now reported by `scan.js` as an
+  `unterminated-tag` error instead of passing as clean; `unilexer.js` stays
+  tolerant and runs the declaration to EOF.
+- Regression sample: `samples/doctype-subset.xml` (comment, PI, quoted `>`
+  and `]>` inside the subset). Existing `samples/sample.xml` output unchanged.
+
 ## Unreleased — tfind.js: zoom into a tape by content, not depth
 
 - New tool, `tfind.js`, answering the question `--outline` can't: "where

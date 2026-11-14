@@ -198,6 +198,42 @@ for (const b of [T.LPAREN, T.RPAREN, T.LBRACKET, T.RBRACKET, T.LBRACE, T.RBRACE]
   TAG_CLASS_YAML[b] = KLASS.BRACKET;            // flow style [a, b] {k: v}
 }
 
+// End offset of an XML `<?…>` / `<!…>` declaration starting at i: the first '>'
+// outside quotes — except that a `<!DOCTYPE … [ … ]>` internal subset is opaque.
+// Its own markup declarations (`<!ENTITY …>`, comments, PIs) carry '>' bytes
+// that do not end the DOCTYPE (issue #48). Tolerant: unterminated → EOF.
+// Same rule as xmlDeclEnd in lexical-scanner.js.
+function xmlDeclEnd(src, i) {
+  const len = src.length;
+  const isDoctype = src.slice(i, i + 9).toUpperCase() === '<!DOCTYPE';
+  let j = i + 2;
+  let q = 0;
+  let inSubset = false;
+  while (j < len) {
+    const c = src.charCodeAt(j);
+    if (q) { if (c === q) q = 0; j++; continue; }
+    if (c === 0x22 || c === 0x27) { q = c; j++; continue; }       // " or '
+    if (inSubset) {
+      if (src.startsWith('<!--', j)) {
+        const k = src.indexOf('-->', j + 4);
+        if (k < 0) return len;
+        j = k + 3; continue;
+      }
+      if (src.startsWith('<?', j)) {
+        const k = src.indexOf('?>', j + 2);
+        if (k < 0) return len;
+        j = k + 2; continue;
+      }
+      if (c === 0x5D) inSubset = false;                              // ']'
+      j++; continue;
+    }
+    if (c === 0x5B && isDoctype) { inSubset = true; j++; continue; } // '['
+    if (c === 0x3E) return j + 1;                                    // '>'
+    j++;
+  }
+  return len;
+}
+
 // Runtime-loaded keyword vocabulary: the CSV is the source of truth, so
 // adding a keyword is a one-line edit to a data file, never a code change.
 // One word per line; blank lines and '#'-prefixed comment lines are ignored.
@@ -598,14 +634,7 @@ class UniLexer {
             i = j; continue;
           }
           if (src.startsWith('<?', i) || src.startsWith('<!', i)) {
-            let j = i + 2; let q = 0;
-            while (j < len) {                                        // to '>' honoring quotes
-              const cj = src.charCodeAt(j);
-              if (q) { if (cj === q) q = 0; }
-              else if (cj === 0x22 || cj === 0x27) q = cj;
-              else if (cj === 0x3E) { j++; break; }
-              j++;
-            }
+            const j = xmlDeclEnd(src, i);                            // tolerant: runs to EOF if unterminated
             emit(0x21, KLASS.DECL, src.slice(start, j), start, depth);
             i = j; continue;
           }

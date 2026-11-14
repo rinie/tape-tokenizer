@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!doctype root SYSTEM "x.dtd" [
+  <!-- it's a > trap ] -->
+  <?pi don't > stop ?>
+  <!ELEMENT root (#PCDATA)>
+  <!ATTLIST root a CDATA "x]>y">
+  <!ENTITY e 'a > b'>
+]>
+<root a="1">&e;</root>
