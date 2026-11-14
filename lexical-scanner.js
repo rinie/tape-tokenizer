@@ -86,6 +86,42 @@ function startsWith(src, i, str) {
   return true;
 }
 
+// End of an XML `<?…>` / `<!…>` declaration starting at i: the first '>' outside
+// quotes — except that a `<!DOCTYPE … [ … ]>` internal subset is opaque. Its own
+// markup declarations (`<!ENTITY …>`, `<!ELEMENT …>`, comments, PIs) carry '>'
+// bytes that do not end the DOCTYPE (issue #48). Returns { end } or
+// { end: len, unterminated: true }.
+function xmlDeclEnd(src, i) {
+  const len = src.length;
+  const isDoctype = src.slice(i, i + 9).toUpperCase() === '<!DOCTYPE';
+  let j = i + 2;
+  let q = 0;
+  let inSubset = false;
+  while (j < len) {
+    const c = src.charCodeAt(j);
+    if (q) { if (c === q) q = 0; j++; continue; }
+    if (c === 0x22 || c === 0x27) { q = c; j++; continue; }       // " or '
+    if (inSubset) {
+      if (startsWith(src, j, '<!--')) {
+        const k = src.indexOf('-->', j + 4);
+        if (k < 0) break;
+        j = k + 3; continue;
+      }
+      if (startsWith(src, j, '<?')) {
+        const k = src.indexOf('?>', j + 2);
+        if (k < 0) break;
+        j = k + 2; continue;
+      }
+      if (c === 0x5D) inSubset = false;                              // ']'
+      j++; continue;
+    }
+    if (c === 0x5B && isDoctype) { inSubset = true; j++; continue; } // '['
+    if (c === 0x3E) return { end: j + 1 };                           // '>'
+    j++;
+  }
+  return { end: len, unterminated: true };
+}
+
 function isNameChar(code) {
   // tag-name bytes: letters, digits, '-', '_', ':', '.'
   return (code >= 0x61 && code <= 0x7A) || (code >= 0x41 && code <= 0x5A) ||
@@ -469,7 +505,7 @@ class LexicalScanner {
       }
       if (startsWith(src, i, '<?') || startsWith(src, i, '<!')) {
         const start = i;
-        const r = this._skipTag(src, i);
+        const r = xmlDeclEnd(src, i);
         if (r.unterminated) { this._stopUnterminated('unterminated-tag', '<', start); break scanLoop; }
         this._emit(X_DECL, start, stack.length);
         i = r.end;
