@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UniLexer, KLASS } from './unilexer.js';
@@ -302,6 +302,18 @@ test('tfind: malformed objects terminate (no infinite loop)', () => {
       assert.equal(r.status, 0, `${body}: exit ${r.status}`);
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('samples/sample.html: one deliberate seam, every optional end implied', () => {
+  const src = readFileSync('samples/sample.html', 'utf8');
+  const r = new LexicalScanner().scan(src, HTML_TABLE);
+  assert.deepEqual(r.repairMap().map((f) => `${f.kind}:${f.char}`), ['improper-nesting:b']);
+  const implied = [...r.tags].map((t, i) => (t === 0x7E ? r.nameOf(i) : null)).filter(Boolean).sort();
+  assert.deepEqual(implied, ['b', 'body', 'colgroup', 'dd', 'dt', 'head', 'html', 'li', 'li',
+    'p', 'p', 'tbody', 'td', 'td', 'td', 'td', 'th', 'th', 'thead', 'tr', 'tr', 'tr']);
+  const t = L.tokenizeHtml(src);
+  assert.equal(t.reconstruct(), src);
+  assert.deepEqual(t.repairMap(), []);
 });
 
 test('tdump --outline: XML/HTML attributes are hidden, the element tree stays', () => {

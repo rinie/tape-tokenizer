@@ -14,6 +14,16 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — samples/sample.html
+
+- An HTML sample for `HTML_TABLE` and unilexer's HTML mode. It omits every
+  end tag the spec allows, puts markup-looking text in `<title>`, `<style>`
+  and `<script>`, and uses void elements. It also has one deliberate seam:
+  an unclosed `<b>` inside a `<p>` that a `<div>` ends.
+- `validate.js` runs it under the library policy, and `test.js` checks the
+  verdict (only the `<b>`), the implied closes, and that unilexer
+  reconstructs it losslessly.
+
 ## Unreleased — tdump --outline hides XML/HTML attributes
 
 - In XML/HTML, `--outline` printed every attribute as three rows under its
