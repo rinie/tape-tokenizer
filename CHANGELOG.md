@@ -14,6 +14,25 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — HTML: optional end tags are implied, not seams
+
+- Follow-up to the HTML table: `<p>one<p>two`, `<li>a<li>b</ul>`,
+  `<tr><td>1<td>2</table>` and a document that never writes `</body>` or
+  `</html>` were reported as unclosed tags / improper nesting, though the
+  spec allows every one of those omissions.
+- `HTML_TABLE.optionalEnd` lists, per element, the start tags that end it
+  (the WHATWG "optional tags" rules: p, li, dt/dd, rt/rp, option/optgroup,
+  colgroup, caption, thead/tbody/tfoot, tr, td/th, html/head/body). Such an
+  element is also ended by its parent's close tag and by end of input.
+- An implied end is a ZERO-WIDTH token with its own projection char `~` (at
+  the offset of whatever ended it), linked like a real close — the tape
+  never claims a `</p>` that is not in the source.
+- Linter-grade, deliberately: a start tag only ends elements in the run of
+  optional-end elements on top of the stack, so a nested list's `<li>`
+  can't close the outer one, but `<p><b>x<div>` still reports the `<p>`
+  (a browser would close it). Content-based rules (a `<colgroup>` ended by
+  any non-`<col>` content) are left out. Plain XML is unchanged.
+
 ## Unreleased — review fixes: lexer edge cases, tool hangs, a test suite
 
 - Setback, found in a code review: `unilexer.js` had no assertions at all —
