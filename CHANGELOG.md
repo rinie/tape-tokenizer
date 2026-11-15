@@ -18,6 +18,19 @@ regression suite (#50), and the **HTML wave** (#51–#57: optional end tags,
 HTML mode in unilexer, content-based ends, attribute-free outlines, and a
 sample page that exercises all of it).
 
+## Unreleased — tdump --outline --clike: a C-like layout for XML/HTML
+
+- A second layout for the XML/HTML outline, next to the default one where
+  the symbol comes first (`{ book` … `} book`). With `--clike` the name
+  comes before the brace and the close is a bare brace (`book {` … `}`).
+  An element with no content is a statement (`br;`), and text is a quoted
+  string. A folded element reads `book { … 33 … }`.
+- An omitted HTML end tag still shows as `~`, not `}`, so the view never
+  shows a close that is not in the source. An orphan close keeps its name
+  (`} z …?`) so you can tell which one it is.
+- Only `--outline` uses it, and only for XML/HTML; other languages print
+  as before. `--clike` without `--outline` is a usage error.
+
 ## PR #57 — tfind: one-line match headers · 2026-11-15
 
 - An HTML text token keeps its trailing newline, so `tfind 25.50

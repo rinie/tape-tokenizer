@@ -54,6 +54,10 @@ OPTIONS
                    to one line (\`{ … 12 … }\`) via its link. Trivia and bare
                    punct (: , ;) are always dropped, and so are XML/HTML
                    attributes. Raise n to peel a layer.
+      --clike      With --outline, XML/HTML in a C-like layout: the name
+                   before the brace and a bare close (book { … }), an empty
+                   element as a statement (br;), text as a quoted string.
+                   An omitted HTML end tag still shows as ~.
   -l, --lang <l>   Force language: js | xml | html | rust | sql | py | yaml |
                    json5. Default: detect from the file extension
                    (.xml/.svg -> xml, .html/.htm -> html, .rs -> rust,
@@ -205,10 +209,29 @@ function skipAttributes(u, n, t) {
   return j;
 }
 
-function outlineView(src, lang, maxDepth) {
+// --clike: XML/HTML in a C-like layout — the name BEFORE the brace and a bare
+// closing brace (`book {` … `}`), an element with no content as a statement
+// (`br;`), text as a string literal. An omitted HTML end tag keeps its own
+// `~` instead of `}`: the tape never claims a close that is not in the
+// source. Everything else (declarations, other languages) is unchanged.
+function clikeLabel(u, t, unmatched) {
+  const tag = u.tagOf(t);
+  const lex = u.lexemeOf(t);
+  if (u.classOf(t) === KLASS.TAG) {
+    if (tag === 0x7B) return `${lex} {`;
+    if (tag === 0x2F) return `${lex};`;
+    if (tag === 0x7E) return '~';
+    if (tag === 0x7D) return unmatched ? `} ${lex}` : '}';   // an orphan close keeps its name
+  }
+  if (u.classOf(t) === KLASS.TEXT) return JSON.stringify(lex.length > 60 ? lex.slice(0, 60) + '…' : lex);
+  return outlineLabel(u, t);
+}
+
+function outlineView(src, lang, maxDepth, { clike = false } = {}) {
   const u = tokenize(src, lang);
   const n = u.length;
   const markup = lang === 'xml' || lang === 'html';
+  const label = markup && clike ? (t, unmatched = false) => clikeLabel(u, t, unmatched) : (t) => outlineLabel(u, t);
   const lines = [];
   let t = 0;
   while (t < n) {
@@ -222,21 +245,21 @@ function outlineView(src, lang, maxDepth) {
     // <b y="2"/>: an element closed by the '/>' after its attributes is one
     // self-contained line, the same '/' as an attribute-less <c/>
     if (markup && isOpener && u.classOf(link) === KLASS.PUNCT) {
-      lines.push(`${indent}/ ${u.lexemeOf(t)}`);
+      lines.push(clike ? `${indent}${u.lexemeOf(t)};` : `${indent}/ ${u.lexemeOf(t)}`);
       t = link + 1;
       continue;
     }
     if (isOpener && d === maxDepth - 1) {
       // count the element's content, not its (hidden) attributes
       const inner = link - (markup && klass === KLASS.TAG ? skipAttributes(u, n, t) : t + 1);
-      const label = `${outlineLabel(u, t)}`;
-      const closeLabel = outlineLabel(u, link);
-      lines.push(inner <= 0 ? `${indent}${label}${closeLabel}` : `${indent}${label} … ${inner} … ${closeLabel}`);
+      const openLabel = label(t);
+      const closeLabel = label(link);
+      lines.push(inner <= 0 ? `${indent}${openLabel}${closeLabel}` : `${indent}${openLabel} … ${inner} … ${closeLabel}`);
       t = link + 1;
       continue;
     }
     const unmatched = link === -1 && (klass === KLASS.BRACKET || klass === KLASS.TAG);
-    lines.push(indent + outlineLabel(u, t) + (unmatched ? ' …?' : ''));
+    lines.push(indent + label(t, unmatched) + (unmatched ? ' …?' : ''));
     // a start tag (open '{' or void '/'): its attributes are not structure
     const tag = u.tagOf(t);
     t = markup && klass === KLASS.TAG && (tag === 0x7B || tag === 0x2F) ? skipAttributes(u, n, t) : t + 1;
@@ -300,6 +323,7 @@ function main() {
         brief:   { type: 'boolean' },
         signal:  { type: 'boolean' },
         outline: { type: 'string',  short: 'o' },
+        clike:   { type: 'boolean' },
         lang:    { type: 'string',  short: 'l' },
         help:    { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'V' },
@@ -320,13 +344,14 @@ function main() {
     outlineDepth = parseInt(values.outline, 10);
     if (!Number.isInteger(outlineDepth) || outlineDepth < 1) fail(`invalid --outline '${values.outline}' (expected a depth >= 1)`);
   }
+  if (values.clike && !outlineDepth) fail('--clike only applies to --outline');
 
   let src;
   try {
     src = positionals[0] === '-' ? readFileSync(0, 'utf8') : readFileSync(positionals[0], 'utf8');
   } catch { fail(`cannot read '${positionals[0]}'`); }
 
-  process.stdout.write((outlineDepth ? outlineView(src, lang, outlineDepth) : dumpTokens(src, mode, lang)) + '\n');
+  process.stdout.write((outlineDepth ? outlineView(src, lang, outlineDepth, { clike: !!values.clike }) : dumpTokens(src, mode, lang)) + '\n');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

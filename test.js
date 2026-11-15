@@ -322,6 +322,20 @@ test('samples/sample.html: one deliberate seam, every optional end implied', () 
   assert.deepEqual(t.repairMap(), []);
 });
 
+test('tdump --outline --clike: name before the brace, bare close', () => {
+  const body = (out) => out.split('\n').slice(1);
+  const xml = '<a x="1"><b y="2"/><c/><d>t</d><e><f>u</f></e></a></z>';
+  assert.deepEqual(body(outlineView(xml, 'xml', 3, { clike: true })),
+    ['a {', '  b;', '  c;', '  d {', '    "t"', '  }', '  e {', '    f { … 1 … }', '  }', '}', '} z …?']);
+  // an omitted HTML end tag stays visible as ~
+  assert.deepEqual(body(outlineView('<ul><li>a<br>b</ul>', 'html', 3, { clike: true })),
+    ['ul {', '  li {', '    "a"', '    br;', '    "b"', '  ~', '}']);
+  // other languages are unchanged
+  assert.equal(outlineView('{"a": [1]}', 'json5', 3, { clike: true }), outlineView('{"a": [1]}', 'json5', 3));
+  const r = spawnSync(process.execPath, ['tdump.js', '--clike', 'samples/sample.xml'], { encoding: 'utf8' });
+  assert.equal(r.status, 2, 'without --outline it is a usage error');
+});
+
 test('tdump --outline: XML/HTML attributes are hidden, the element tree stays', () => {
   const xml = `<a x="1"><b y="2"/><c/><d z=3 w='4'>t</d></a>`;
   const body = (out) => out.split('\n').slice(1);    // drop the header line
