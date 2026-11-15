@@ -165,6 +165,31 @@ test('HTML: a block start tag ends <p> through inline elements', () => {
   assert.equal(b.offsets[b.jumps[0]], b.src.length, 'the <p> ends at end of input, not at the <div>');
 });
 
+const impliedAt = (src) => {
+  const r = new LexicalScanner().scan(src, HTML_TABLE);
+  return [...r.tags].map((t, i) => (t === 0x7E ? `${r.nameOf(i)}@${r.offsets[i]}` : null)).filter(Boolean);
+};
+
+test('HTML: <head> ends at the first content it cannot hold', () => {
+  const src = '<html><head><meta charset=x><title>t</title>\n<div>x</div></html>';
+  assert.deepEqual(htmlFindings(src), []);
+  assert.deepEqual(impliedAt(src), [`head@${src.indexOf('<div>')}`]);
+  const text = '<head><link rel=a>\n  Hello';
+  assert.deepEqual(impliedAt(text), [`head@${text.indexOf('Hello')}`]);
+  // comments, whitespace and head content keep it open
+  assert.deepEqual(impliedAt('<head><title>t</title> <!-- c --> <style>p{}</style></head>'), []);
+  // a <noscript> in head is a required-end element: its <link> does not end <head>
+  assert.deepEqual(impliedAt('<head><noscript><link></noscript><p>a'), ['head@33', 'p@37']);
+  // an explicit </head> after body content has nothing left to close
+  assert.deepEqual(htmlFindings('<head><title>t</title>x</head>'), ['orphan-close-tag:head']);
+});
+
+test('HTML: <colgroup> ends at anything but <col>', () => {
+  assert.deepEqual(impliedAt('<table><colgroup><col><col><tr><td>1</table>'), ['colgroup@27', 'td@36', 'tr@36']);
+  assert.deepEqual(impliedAt('<table><colgroup><col> x </table>'), ['colgroup@23']);
+  assert.deepEqual(htmlFindings('<table><colgroup><col>\n<caption>c</caption><tr><td>1</table>'), []);
+});
+
 test('HTML: required end tags are still reported', () => {
   assert.deepEqual(htmlFindings('<div><b>x</div>'), ['improper-nesting:b', 'unclosed-tag:b']);
   assert.deepEqual(htmlFindings('<p>a</p></p>'), ['orphan-close-tag:p']);
@@ -203,6 +228,19 @@ test('HTML: unilexer ends <p> through inline elements too', () => {
   for (let i = 0; i < t.length; i++) if (t.tagOf(i) === 0x7E) ends.push(`${t.lexemeOf(i)}@${t.offsetOf(i)}`);
   assert.deepEqual(ends, ['b@7', 'p@7']);
   assert.deepEqual(t.repairMap(), []);
+});
+
+test('HTML: unilexer ends <head>/<colgroup> on content, at the first visible char', () => {
+  for (const src of ['<head><link rel=a>\n  Hello <b>w</b>', '<table><colgroup><col><tr><td>1</table>']) {
+    const t = L.tokenizeHtml(src);
+    assert.equal(t.reconstruct(), src);
+    assert.deepEqual(t.repairMap(), []);
+  }
+  const t = L.tokenizeHtml('<head><link rel=a>\n  Hello');
+  const i = [...Array(t.length).keys()].find((k) => t.tagOf(k) === 0x7E);
+  assert.equal(t.lexemeOf(i), 'head');
+  assert.equal(t.offsetOf(i), 21);
+  assert.equal(t.lexemeOf(i + 1), 'Hello');
 });
 
 test('HTML: void elements are complete; names fold to lower case', () => {

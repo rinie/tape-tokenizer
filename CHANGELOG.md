@@ -14,6 +14,23 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — HTML: `<head>` and `<colgroup>` end at content they can't hold
+
+- `<head><title>t</title><div>` left the `<div>` inside `<head>`. Only
+  `<body>` ended `<head>`, and `<colgroup>` waited for a table start tag.
+  A browser ends both elements at the first content they cannot contain.
+- New `HTML_TABLE.endedByContent` maps each element to the start tags it may
+  hold. `<head>` may hold `<meta>`, `<link>`, `<title>`, `<style>`,
+  `<script>`, `<noscript>`, `<template>`, `<base>` and a few legacy ones.
+  `<colgroup>` may hold `<col>` and `<template>`.
+- Any other start tag ends the element, and so does text that is not
+  whitespace. The end is a zero-width `~` token where that content starts.
+  unilexer keeps leading whitespace inside the element and starts the text
+  token at the first visible character. Comments and whitespace do not end
+  the element.
+- If the source still has an explicit `</head>` after body content, it is
+  reported as `orphan-close-tag`. A browser ignores that tag too.
+
 ## Unreleased — HTML: a block start tag ends `<p>` through inline elements
 
 - `<p><b>x<div>` reported the `<p>` as unclosed: a start tag only looked
@@ -65,8 +82,9 @@ direct bytes for closed vocabularies, indirection only for real variation).
 - Linter-grade, deliberately: a start tag only ends elements in the run of
   optional-end elements on top of the stack, so a nested list's `<li>`
   can't close the outer one, but `<p><b>x<div>` still reports the `<p>`
-  (a browser would close it — fixed in a later PR, above). Content-based rules (a `<colgroup>` ended by
-  any non-`<col>` content) are left out. Plain XML is unchanged.
+  (a browser would close it — fixed in a later PR, above). Content-based
+  rules (a `<colgroup>` ended by any non-`<col>` content) are left out
+  (added in a later PR, above). Plain XML is unchanged.
 
 ## Unreleased — review fixes: lexer edge cases, tool hangs, a test suite
 
