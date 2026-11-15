@@ -152,6 +152,19 @@ test('HTML: a nested list item does not close the outer one', () => {
   assert.ok(r.offsets[r.jumps[outerLi]] > r.src.indexOf('</ul>'), 'outer li must close at the outer </ul>');
 });
 
+test('HTML: a block start tag ends <p> through inline elements', () => {
+  const r = new LexicalScanner().scan('<p><b><i>x</i>y<div>z</div>', HTML_TABLE);
+  assert.deepEqual(r.repairMap().map((f) => `${f.kind}:${f.char}`), ['improper-nesting:b']);
+  const implied = [...r.tags].map((t, i) => (t === 0x7E ? r.nameOf(i) : null)).filter(Boolean);
+  assert.deepEqual(implied, ['b', 'p'], 'the <b> and the <p> end where <div> starts');
+  assert.deepEqual(htmlFindings('<ul><li><a href=x>a<li>b</ul>'), ['improper-nesting:a']);
+  assert.deepEqual(htmlFindings('<p><b>x</b><div>y</div>'), []);
+  // <button> is a scope barrier: the <div> inside it does not end the <p>
+  assert.deepEqual(htmlFindings('<p><button>x<div>y</div></button>'), []);
+  const b = new LexicalScanner().scan('<p><button>x<div>y</div></button>', HTML_TABLE);
+  assert.equal(b.offsets[b.jumps[0]], b.src.length, 'the <p> ends at end of input, not at the <div>');
+});
+
 test('HTML: required end tags are still reported', () => {
   assert.deepEqual(htmlFindings('<div><b>x</div>'), ['improper-nesting:b', 'unclosed-tag:b']);
   assert.deepEqual(htmlFindings('<p>a</p></p>'), ['orphan-close-tag:p']);
@@ -182,6 +195,14 @@ test('HTML: implied closes are zero-width ~ tokens linked to their opener', () =
   for (let i = 0; i < t.length; i++) if (t.classOf(i) === KLASS.TAG) rows.push(`${t.mnemonicOf(i)}${t.lexemeOf(i)}@${t.offsetOf(i)}→${t.linkOf(i)}`);
   assert.deepEqual(rows, ['{ul@0→7', '{li@4→3', '~li@9→1', '{li@9→6', '~li@14→4', '}ul@14→0']);
   for (let i = 0; i < t.length; i++) if (t.tagOf(i) === 0x7E) assert.equal(t.rawOf(i), '', 'implied close must be zero-width');
+});
+
+test('HTML: unilexer ends <p> through inline elements too', () => {
+  const t = L.tokenizeHtml('<p><b>x<div>y</div>');
+  const ends = [];
+  for (let i = 0; i < t.length; i++) if (t.tagOf(i) === 0x7E) ends.push(`${t.lexemeOf(i)}@${t.offsetOf(i)}`);
+  assert.deepEqual(ends, ['b@7', 'p@7']);
+  assert.deepEqual(t.repairMap(), []);
 });
 
 test('HTML: void elements are complete; names fold to lower case', () => {

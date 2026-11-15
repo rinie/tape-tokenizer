@@ -14,6 +14,22 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — HTML: a block start tag ends `<p>` through inline elements
+
+- `<p><b>x<div>` reported the `<p>` as unclosed: a start tag only looked
+  through the run of optional-end elements on top of the stack, and the
+  `<b>` stopped the search. A browser closes both.
+- The search now also passes over inline (phrasing) elements — the new
+  `HTML_TABLE.phrasingElements` set: `a`, `b`, `em`, `span`, `strong`, …
+  A block element (`<div>`, `<ul>`) still bounds it, and so do the inline
+  elements the HTML parser treats as scope barriers (`<button>`,
+  `<object>`), which are left out of the set.
+- Everything down to the ended element closes as zero-width `~` tokens, in
+  both scanners. The `<p>`'s end is optional, so it is not reported; the
+  `<b>`'s end is not, so `scan.js` still reports it once as
+  `improper-nesting` ("still open when <div> ended <p>") — the same rule
+  applies to `<li><a>x<li>`.
+
 ## Unreleased — HTML mode for unilexer (tdump, tfind, tfreq)
 
 - `.html`/`.htm` went through unilexer's plain XML mode, so `tdump
@@ -49,7 +65,7 @@ direct bytes for closed vocabularies, indirection only for real variation).
 - Linter-grade, deliberately: a start tag only ends elements in the run of
   optional-end elements on top of the stack, so a nested list's `<li>`
   can't close the outer one, but `<p><b>x<div>` still reports the `<p>`
-  (a browser would close it). Content-based rules (a `<colgroup>` ended by
+  (a browser would close it — fixed in a later PR, above). Content-based rules (a `<colgroup>` ended by
   any non-`<col>` content) are left out. Plain XML is unchanged.
 
 ## Unreleased — review fixes: lexer edge cases, tool hangs, a test suite

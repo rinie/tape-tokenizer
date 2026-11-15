@@ -493,19 +493,37 @@ class LexicalScanner {
 
     // HTML optional end tags (<p>, <li>, <td>, …): a start tag may END open
     // elements whose close tag the author was allowed to leave out. Walk down
-    // the run of optional-end elements on top of the stack (a required-end
-    // element like <ul> or <div> bounds the scope — a nested list's <li> must
-    // not close the outer one) and close everything down to the deepest one
-    // this start tag ends.
+    // the stack through optional-end elements and inline (phrasing) elements
+    // — a required-end block element like <ul> or <div> bounds the scope: a
+    // nested list's <li> must not close the outer one — and close everything
+    // down to the deepest element this start tag ends. An inline element
+    // passed over on the way (<p><b>x<div>) is closed too, as the HTML parser
+    // does, but its end tag was NOT optional: that one is reported.
+    const phrasing = table.phrasingElements || null;
     const impliedByStart = (name, offset) => {
       if (!optEnd) return;
       let target = -1;
       for (let s = stack.length - 1; s >= 0; s--) {
-        const closers = optEnd.get(this._internNames[stack[s].nameId]);
-        if (!closers) break;
-        if (closers.has(name)) target = s;
+        const elName = this._internNames[stack[s].nameId];
+        const closers = optEnd.get(elName);
+        if (closers) { if (closers.has(name)) target = s; continue; }
+        if (!phrasing || !phrasing.has(elName)) break;
       }
-      while (target !== -1 && stack.length > target) this._impliedClose(stack.pop(), offset);
+      while (target !== -1 && stack.length > target) {
+        const e = stack.pop();
+        if (!isOptional(e) && !e.reported) {
+          this._findings.push({
+            kind: 'improper-nesting',
+            severity: 'warning',
+            char: this._internNames[e.nameId],
+            offset: this._offsetArr[e.idx],
+            endOffset: offset,
+            tapeIndex: e.idx,
+            note: `still open when <${name}> ended <${this._internNames[stack[target].nameId]}>`,
+          });
+        }
+        this._impliedClose(e, offset);
+      }
     };
 
     let i = 0;
@@ -910,9 +928,10 @@ const XML_TABLE = { mode: 'xml' };
 // unilexer.js's tokenizeHtml() imports this same table.
 //
 // The rules are the WHATWG "optional tags" section, linter-grade: a start tag
-// only ends elements in the run of optional-end elements on top of the stack
-// (no full "scope" algorithm), and the content-based rules (a <colgroup> ended
-// by any non-<col> content, <head> by body content) are left out.
+// only ends elements reachable through optional-end and inline (phrasing)
+// elements on top of the stack (no full "scope" algorithm — any other element
+// bounds the search), and the content-based rules (a <colgroup> ended by any
+// non-<col> content, <head> by body content) are left out.
 const P_CLOSERS = ['address', 'article', 'aside', 'blockquote', 'center', 'details',
   'dialog', 'dir', 'div', 'dl', 'fieldset', 'figcaption', 'figure', 'footer', 'form',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr', 'li', 'dd', 'dt',
@@ -924,6 +943,13 @@ const HTML_TABLE = {
   caseInsensitive: true,
   voidElements: new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
     'link', 'meta', 'param', 'source', 'track', 'wbr']),
+  // inline elements a start tag may END through to reach an optional-end
+  // element (<p><b>x<div> ends the <b> and the <p>). The ones the HTML
+  // parser treats as scope barriers (<button>, <object>, …) are left out.
+  phrasingElements: new Set(['a', 'abbr', 'b', 'bdi', 'bdo', 'big', 'cite', 'code',
+    'data', 'del', 'dfn', 'em', 'font', 'i', 'ins', 'kbd', 'label', 'mark', 'nobr',
+    'q', 's', 'samp', 'small', 'span', 'strike', 'strong', 'sub', 'sup', 'time',
+    'tt', 'u', 'var']),
   // content is text up to the element's own close tag — never markup
   rawTextElements: new Set(['script', 'style', 'textarea', 'title']),
   // element → the start tags that end it (an empty set: ended only by its
