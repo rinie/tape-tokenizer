@@ -17,7 +17,7 @@ grammared into an AST.
   inside strings/comments/regex. Unbalanced input never throws — it surfaces as
   findings (unmatched, orphan, crossing, unterminated), each with its source
   offset(s).
-- **Per-language lexical tables.** JS, C, Python, XML. The scanner is
+- **Per-language lexical tables.** JS, C, Python, XML, HTML. The scanner is
   language-agnostic; the swappable table is the only thing that changes. Tables
   can be **harvested** from real TextMate grammars (`harvest.js`).
 - **Two structure systems on one tape.** Free-form braces *and* the line-based C
@@ -63,6 +63,7 @@ convention).
 ```
 scan.js              CLI front end (extension detection, recursive walk, policy)
 validate.js          batch validator + built-in self-test suite
+test.js              regression assertions (unilexer languages + tools)
 lexical-scanner.js   the structural scanner + the lexical tables (JS/C/PY/XML)
 bracket-scanner.js   milestone-1 reference: bracket-only scanner
 harvest.js           derive a lexical table from a *.tmLanguage.json grammar
@@ -127,9 +128,10 @@ ride on layer 2.
 ## Status
 
 Working prototype, JavaScript, no dependencies (Node 18+ for `node:util`
-`parseArgs`; Node 22+ runs the ESM `.js` files without a `package.json`). Tables
-are linter-grade and tolerant, not a compiler. See the CHANGELOG for what's
-landed and what's still sketched.
+`parseArgs`; `package.json` marks the `.js` files as ESM). `npm test` runs
+`validate.js` (tables vs real files) and `test.js` (regression assertions).
+Tables are linter-grade and tolerant, not a compiler. See the CHANGELOG for
+what's landed and what's still sketched.
 
 ## License
 

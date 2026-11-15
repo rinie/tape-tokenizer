@@ -204,7 +204,7 @@ class LexicalScanner {
   scan(src, table) {
     this._reset();
     this._src = src;
-    if (table && table.mode === 'xml') return this._scanXml(src);
+    if (table && table.mode === 'xml') return this._scanXml(src, table);
     return this._scanBrackets(src, table || {});
   }
 
@@ -305,11 +305,14 @@ class LexicalScanner {
         // operators everywhere else — is admitted safely. The gate is a
         // line-local positional fact, not an AST: scan back to the line start,
         // require `#`, read the directive word.
+        // (cheap delimiter test first: the directive lookup scans back to the
+        // line start, and must not run at every byte)
+        if (!startsWith(src, i, s.open)) continue;
         if (s.onlyOnDirective) {
           const d = this._lineDirective(src, i);
           if (!d || !s.onlyOnDirective.includes(d)) continue;
         }
-        if (startsWith(src, i, s.open)) {
+        {
           const r = this._skipString(src, i, s);
           if (r.unterminated && !r.boundedByNewline) {
             // unbounded multi-line token (e.g. backtick) ran to EOF — HARD stop
@@ -477,9 +480,13 @@ class LexicalScanner {
 
   // ── XML mode — tags as a tolerant, name-matched bracket family ─────────────
 
-  _scanXml(src) {
+  _scanXml(src, table = {}) {
     const len = src.length;
     const stack = [];   // { idx, nameId } of open element tags awaiting a close
+    // HTML: names are case-insensitive, and void elements (<br>, <img>, …)
+    // never take a close tag — they are complete on their own, like '<br/>'.
+    const voids = table.voidElements || null;
+    const fold = table.caseInsensitive ? (s) => s.toLowerCase() : (s) => s;
 
     let i = 0;
     scanLoop:
@@ -518,16 +525,20 @@ class LexicalScanner {
       let j = i + (isClose ? 2 : 1);
       const nameStart = j;
       while (j < len && isNameChar(src.charCodeAt(j))) j++;
-      const name = src.slice(nameStart, j);
+      const name = fold(src.slice(nameStart, j));
+
+      // A '<' not followed by a name ('a < b', '<>') is text, not a tag —
+      // skipping to the next '>' would swallow the real tag after it.
+      if (name === '') { i++; continue; }
 
       const r = this._skipTag(src, i);
       if (r.unterminated) { this._stopUnterminated('unterminated-tag', '<', start); break scanLoop; }
 
       if (isClose) {
         this._closeXmlTag(name, start, stack);
-      } else if (r.selfClosing || name === '') {
-        // self-closing (or a bare '<>' we won't nest) — matched, zero span
-        const idx = this._emit(X_SELF, start, stack.length, name ? this._intern(name) : -1);
+      } else if (r.selfClosing || (voids && voids.has(name))) {
+        // self-closing (or an HTML void element) — matched, zero span
+        const idx = this._emit(X_SELF, start, stack.length, this._intern(name));
         this._jumpArr[idx] = idx;
       } else {
         const nameId = this._intern(name);
@@ -566,7 +577,7 @@ class LexicalScanner {
   // Tolerant close: match the NEAREST open tag of the same name, even if it is
   // not on top of the stack (improper nesting). Report skipped-over opens.
   _closeXmlTag(name, offset, stack) {
-    const nameId = this._internNames.indexOf(name) === -1 ? -1 : this._intern(name);
+    const nameId = this._internMap.has(name) ? this._internMap.get(name) : -1;
 
     let found = -1;
     for (let s = stack.length - 1; s >= 0; s--) {
@@ -581,8 +592,12 @@ class LexicalScanner {
     }
 
     const openEntry = stack[found];
-    // any tags above the matched open were left unclosed → improper nesting
+    // any tags above the matched open were left unclosed → improper nesting.
+    // Reported ONCE per open tag (it stays on the stack, and every later close
+    // that reaches past it would otherwise report it again).
     for (let s = stack.length - 1; s > found; s--) {
+      if (stack[s].reported) continue;
+      stack[s].reported = true;
       this._findings.push({
         kind: 'improper-nesting',
         severity: 'warning',
@@ -829,4 +844,14 @@ const PYTHON_TABLE = {
 
 const XML_TABLE = { mode: 'xml' };
 
-export { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE };
+// HTML rides the XML scanner with two relaxations: tag names fold to lower
+// case, and the void elements are complete without a close tag. (Optional
+// end tags — an unclosed <p> or <li> — are still reported as seams.)
+const HTML_TABLE = {
+  mode: 'xml',
+  caseInsensitive: true,
+  voidElements: new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+    'link', 'meta', 'param', 'source', 'track', 'wbr']),
+};
+
+export { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE, HTML_TABLE };

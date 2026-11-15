@@ -35,7 +35,7 @@ USAGE
   node tfreq.js [options] <path...>
 
   Walks the given files/directories (recursively), lexes each by extension
-  (js/xml/rust/sql), and reports aggregate frequencies:
+  (js/json5/xml/rust/sql/py/yaml), and reports aggregate frequencies:
 
     - tokens per CLASS (ws, ident, keyword, op, …)
     - operators per ROLE (grouped by tag byte; dialect spellings listed),

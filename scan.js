@@ -7,20 +7,21 @@
 // grep/linter-style exit codes.
 
 import { readFileSync, statSync, readdirSync } from 'node:fs';
-import { join, extname, basename } from 'node:path';
+import { join, extname, basename, dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE } from './lexical-scanner.js';
+import { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE, HTML_TABLE } from './lexical-scanner.js';
 import { analyze, defUseOutline, useBeforeDef } from './defuse.js';
 
 const VERSION = '0.1.0';
 
-const TABLES = { c: C_TABLE, js: JS_TABLE, py: PYTHON_TABLE, xml: XML_TABLE };
+const TABLES = { c: C_TABLE, js: JS_TABLE, py: PYTHON_TABLE, xml: XML_TABLE, html: HTML_TABLE };
 const EXT_LANG = {
   '.c': 'c', '.h': 'c',
   '.js': 'js', '.mjs': 'js', '.cjs': 'js', '.jsx': 'js',
   '.py': 'py',
-  '.xml': 'xml', '.html': 'xml', '.htm': 'xml', '.svg': 'xml',
+  '.xml': 'xml', '.svg': 'xml',
+  '.html': 'html', '.htm': 'html',
 };
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.svn', '.hg', 'dist', 'build']);
 
@@ -37,10 +38,12 @@ USAGE
 ARGUMENTS
   <path...>            Files or directories to scan. Directories are walked
                        recursively (skipping ${[...SKIP_DIRS].join(', ')}).
+                       Wildcards (* ?) in the last path segment are expanded
+                       here, so they work from cmd.exe too.
                        Use '-' to read one source from stdin (needs --lang).
 
 OPTIONS
-  -l, --lang <lang>    Force language: c | js | py | xml. Default: detect from
+  -l, --lang <lang>    Force language: c | js | py | xml | html. Default: detect from
                        file extension. Required when reading from stdin.
   -p, --policy <kind>  Provenance policy: lib (default) | own.
                          lib — third-party code; seams are warnings.
@@ -63,7 +66,8 @@ LANGUAGE DETECTION (by extension)
   .c .h                  -> c
   .js .mjs .cjs .jsx     -> js
   .py                    -> py
-  .xml .html .htm .svg   -> xml
+  .xml .svg              -> xml
+  .html .htm             -> html  (xml, case-insensitive names, void elements)
   (other extensions are skipped unless --lang forces a language)
 
 EXIT STATUS
@@ -105,6 +109,22 @@ function lineOf(src, offset) {
   return line;
 }
 
+// Expand '*' / '?' in the LAST path segment. POSIX shells already do this;
+// cmd.exe does not, so `node scan.js -l c kernel\*.c` would otherwise reach us
+// as a literal path. A pattern that matches nothing is returned as-is (and
+// then fails to stat, with the usual message).
+function expandWildcards(p) {
+  const base = basename(p);
+  if (!/[*?]/.test(base)) return [p];
+  const dir = dirname(p);
+  const re = new RegExp('^' + base.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*').replace(/\?/g, '.') + '$', process.platform === 'win32' ? 'i' : '');
+  let entries;
+  try { entries = readdirSync(dir); } catch { return [p]; }
+  const hits = entries.filter((e) => re.test(e)).sort().map((e) => join(dir, e));
+  return hits.length ? hits : [p];
+}
+
 // Collect files from a path list. Directories walk recursively unless disabled.
 function collectFiles(paths, recurse) {
   const out = [];
@@ -119,7 +139,7 @@ function collectFiles(paths, recurse) {
       out.push(p);
     }
   };
-  for (const p of paths) visit(p);
+  for (const p of paths) for (const q of expandWildcards(p)) visit(q);
   return out;
 }
 

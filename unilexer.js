@@ -32,9 +32,10 @@
 // a 256-entry lookup — no second per-token column. Mnemonic for humans, class
 // for machines, one byte for both.
 //
-// Scope (honest): JavaScript only for now. sfdiff.js rides this module;
-// tokenizer.js (defuse) and lexical-scanner.js (scan/validate — seams, cpp,
-// XML, multi-language tables) are migration targets, not yet migrated.
+// Scope: JS, JSON5 (accepts plain JSON), Rust, XML, Oracle SQL/PL-SQL, Python
+// and YAML. sfdiff.js, defuse.js, tdump.js, tfind.js and tfreq.js ride this
+// module; lexical-scanner.js (scan/validate — seams, cpp conditionals,
+// provenance policy) is still a migration target.
 
 import { readFileSync } from 'node:fs';
 import { T, KEYWORDS, OPS, OP_LITERAL, OP_CONCAT, SQL_OP_ROLES } from './token-tags.js';
@@ -348,9 +349,11 @@ const REGEX_PRECEDING_KW = new Set([
 ]);
 const OP_CHARS = new Set(['=', '!', '<', '>', '&', '|', '^', '~', '+', '-', '*', '%', '/', '?', '@']);
 
-function isWs(c)         { return c === 0x20 || c === 0x09 || c === 0x0A || c === 0x0D; }
+// U+FEFF (a UTF-8 BOM as decoded by readFileSync) is whitespace here — it
+// would otherwise glue onto the first identifier of a Windows-saved file.
+function isWs(c)         { return c === 0x20 || c === 0x09 || c === 0x0A || c === 0x0D || c === 0xFEFF; }
 function isDigit(c)      { return c >= 0x30 && c <= 0x39; }
-function isIdentStart(c) { return (c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A) || c === 0x5F || c === 0x24 || c > 127; }
+function isIdentStart(c) { return (c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A) || c === 0x5F || c === 0x24 || (c > 127 && c !== 0xFEFF); }
 function isIdentPart(c)  { return isIdentStart(c) || isDigit(c); }
 
 // Per-language scan options — the lexical-table idea (§2) arriving at the
@@ -362,6 +365,7 @@ const JS_OPTS = {
   charLifetimes: false,  // Rust ' handling (char literal vs lifetime)
   rawStrings: false,     // Rust r#"…"# (parameterised end) + r#ident
   nestedComments: false, // Rust /* /* */ */ — depth counter, not a flag
+  bigint: true,          // 123n BigInt suffix (JS only)
 };
 
 // Rust keywords, same 13e allocation rule as everywhere else — byte-per-role,
@@ -495,8 +499,9 @@ class UniLexer {
           }
           end = j;
         } else {
-          j = i + 2; while (j < len && !(src.charCodeAt(j - 1) === 0x2A && src.charCodeAt(j) === 0x2F)) j++;
-          end = Math.min(j + 1, len);
+          // the closer is searched from AFTER the opener: '/*/' must not close
+          j = i + 2; while (j < len && !(src.charCodeAt(j) === 0x2A && src.charCodeAt(j + 1) === 0x2F)) j++;
+          end = Math.min(j + 2, len);
         }
         // newlines INSIDE a comment belong to the comment (C(n)); without, '#'
         tag = src.slice(i, end).includes('\n') ? TAG_COMMENT_ML : TAG_COMMENT;
@@ -513,7 +518,7 @@ class UniLexer {
       } else if (opts.regex && c === 0x2F && !prevValue && (end = this._regex(src, i)) !== -1) {
         tag = T.REGEX;
       } else if (isDigit(c) || (c === 0x2E && isDigit(src.charCodeAt(i + 1)))) {
-        end = this._num(src, i);
+        end = this._num(src, i, !!opts.bigint);
         const lex = src.slice(i, end);
         // N = integer (incl. 0x/0b/0o/BigInt), D = float (decimal point / exponent)
         tag = (/^0[xXbBoO]/.test(lex) || !/[.eE]/.test(lex)) ? T.NUMBER : T.DOUBLE;
@@ -550,10 +555,22 @@ class UniLexer {
         // singles route through OPS too: '&' / '|' are the BITWISE roles and
         // live in the block now (0x26/0x7C carry logical && / ||)
         tag = OPS.get(src.slice(i, end)) ?? c;
-      } else if (opts.hashAttr && c === 0x23) {
-        // Rust attribute hash: the ANNOTATION role, ground glyph '@' —
-        // 0x23 is the comment-role byte and must not be emitted as punct
-        end = i + 1; tag = 0x40;
+      } else if (c === 0x23) {
+        // 0x23 is the comment-role byte, so a '#' must never fall through to
+        // the bare-punct branch below (it would read back as a COMMENT).
+        if (opts.hashAttr) {
+          // Rust attribute hash: the ANNOTATION role, ground glyph '@'
+          end = i + 1; tag = 0x40;
+        } else if (i === 0 && src.charCodeAt(1) === 0x21) {
+          // JS hashbang '#!…' on the first line — a line comment
+          let j = 2; while (j < len && src.charCodeAt(j) !== 0x0A) j++;
+          end = j; tag = TAG_COMMENT;
+        } else {
+          // JS private name '#x' — it NAMES something: one identifier token
+          // (distinct from 'x' in the pool, as it is in the language)
+          let j = i + 1; while (j < len && isIdentPart(src.charCodeAt(j))) j++;
+          end = j; tag = T.IDENT;
+        }
       } else {
         end = i + 1; tag = c < 128 ? c : T.OP;   // bare ASCII punct keeps its own byte
       }
@@ -804,6 +821,7 @@ class UniLexer {
     const brStack = [];     // ( [ { — real brackets, also suppress the family
     let depth = 0;
     let atLineStart = true;
+    let joinNext = false;   // a '\' just ended the line (explicit joining)
     let i = 0;
 
     const PYPFX = /^[rRbBuUfF]{1,2}$/;
@@ -848,17 +866,38 @@ class UniLexer {
 
       const start = i;
       if (isWs(c)) {
+        if (joinNext) {
+          // explicit line joining: the newline after a '\' and the next
+          // line's leading blanks are plain whitespace, not a line start
+          joinNext = false;
+          let j = i;
+          if (src.charCodeAt(j) === 0x0D) j++;
+          if (src.charCodeAt(j) === 0x0A) j++;
+          while (j < len && (src.charCodeAt(j) === 0x20 || src.charCodeAt(j) === 0x09)) j++;
+          if (j === i) j = i + 1;
+          emitWsRun(i, j);
+          i = j; continue;
+        }
         let j = i + 1; while (j < len && isWs(src.charCodeAt(j))) j++;
         // stop AFTER the last newline: the next line's leading indent must be
-        // left for the line-start branch to measure
-        const run = src.slice(i, j);
-        const lastNl = Math.max(run.lastIndexOf('\n'), run.lastIndexOf('\r'));
-        if (lastNl !== -1) {
-          j = i + lastNl + 1;
-          atLineStart = true;
+        // left for the line-start branch to measure. Inside ( [ { there is no
+        // line start (implicit joining) — the run is consumed whole, so no
+        // stale line-start state survives the bracket closing mid-line.
+        if (brStack.length === 0) {
+          const run = src.slice(i, j);
+          const lastNl = Math.max(run.lastIndexOf('\n'), run.lastIndexOf('\r'));
+          if (lastNl !== -1) {
+            j = i + lastNl + 1;
+            atLineStart = true;
+          }
         }
         emitWsRun(i, j);
         i = j; continue;
+      }
+      if (c === 0x5C && (src.charCodeAt(i + 1) === 0x0A || src.charCodeAt(i + 1) === 0x0D)) {
+        emit(c, KLASS.PUNCT, '\\', start, depth);             // '\' line continuation
+        joinNext = true;
+        i++; continue;
       }
       if (c === 0x23) {                                       // # comment
         let j = i + 1; while (j < len && src.charCodeAt(j) !== 0x0A) j++;
@@ -906,7 +945,7 @@ class UniLexer {
         i += 2; continue;
       }
       if (c === 0x2D && src.charCodeAt(i + 1) === 0x3E) {     // -> — the arrow role
-        emit(0x8D, KLASS.OP, '->', start, depth);
+        emit(OPS.get('=>'), KLASS.OP, '->', start, depth);
         i += 2; continue;
       }
       if (OP_CHARS.has(src[i])) {
@@ -983,7 +1022,9 @@ class UniLexer {
         if (open !== undefined) link(open, idx);
       }
     };
-    const isWordChar = (c) => isIdentPart(c) || c === 0x2D || c === 0x2E || c === 0x2F;
+    // inside a plain scalar, ' " and # are ordinary characters (don't, a#b)
+    const isWordChar = (c) => isIdentPart(c) || c === 0x2D || c === 0x2E || c === 0x2F
+      || c === 0x27 || c === 0x22 || c === 0x23;
 
     while (i < len) {
       let c = src.charCodeAt(i);
@@ -1027,26 +1068,36 @@ class UniLexer {
         let j = i + 1; while (j < len && isWs(src.charCodeAt(j))) j++;
         // stop AFTER the last newline: the next line's leading indent must be
         // left for the line-start branch to measure
-        const run = src.slice(i, j);
-        const lastNl = Math.max(run.lastIndexOf('\n'), run.lastIndexOf('\r'));
-        if (lastNl !== -1) {
-          j = i + lastNl + 1;
-          atLineStart = true;
+        // (inside a flow collection [ ] { } there is no line start)
+        if (brStack.length === 0) {
+          const run = src.slice(i, j);
+          const lastNl = Math.max(run.lastIndexOf('\n'), run.lastIndexOf('\r'));
+          if (lastNl !== -1) {
+            j = i + lastNl + 1;
+            atLineStart = true;
+          }
         }
         emitWsRun(i, j);
         i = j; continue;
       }
-      if (c === 0x23) {                                        // comment (post-ws by loop shape)
+      // What came right before c: whitespace/line start, or a flow indicator.
+      // YAML only opens a comment after whitespace, and only opens a QUOTED
+      // scalar where a scalar begins — an apostrophe inside a plain scalar
+      // (don't, it's) is just a character of that scalar.
+      const pc = i > 0 ? src.charCodeAt(i - 1) : 0x0A;
+      const afterWs = isWs(pc);
+      const scalarStart = afterWs || pc === 0x5B || pc === 0x7B || pc === 0x2C;   // [ { ,
+      if (c === 0x23 && afterWs) {                             // comment
         let j = i + 1; while (j < len && src.charCodeAt(j) !== 0x0A) j++;
         emit(TAG_COMMENT, KLASS.COMMENT, src.slice(start, j), start, depth);
         i = j; continue;
       }
-      if (c === 0x27) {                                        // 'single' — '' escape
+      if (c === 0x27 && scalarStart) {                         // 'single' — '' escape
         const end = this._sqlStr(src, i);
         emit(0x27, KLASS.STRING, src.slice(start, end), start, depth);
         i = end; continue;
       }
-      if (c === 0x22) {                                        // "double" — backslash escape
+      if (c === 0x22 && scalarStart) {                         // "double" — backslash escape
         let j = i + 1;
         while (j < len && src.charCodeAt(j) !== 0x22) { if (src.charCodeAt(j) === 0x5C) j++; j++; }
         j = Math.min(j + 1, len);
@@ -1098,10 +1149,13 @@ class UniLexer {
       if (isDigit(c)) {
         const end = this._num(src, i);
         const lex = src.slice(start, end);
-        emit(/[.eE]/.test(lex) ? T.DOUBLE : T.NUMBER, KLASS.NUMBER, lex, start, depth);
+        emit(/[.eE]/.test(lex) && !/^0[xXbBoO]/.test(lex) ? T.DOUBLE : T.NUMBER, KLASS.NUMBER, lex, start, depth);
         i = end; continue;
       }
-      if (isIdentStart(c)) {                                   // plain scalar word
+      // plain scalar word. A ' " or # reaching here was NOT a quote/comment
+      // start (see scalarStart / afterWs above) — it begins a plain scalar;
+      // emitting it as punct would collide with its STRING/COMMENT class byte.
+      if (isIdentStart(c) || c === 0x27 || c === 0x22 || c === 0x23) {
         let j = i + 1; while (j < len && isWordChar(src.charCodeAt(j))) j++;
         emit(T.IDENT, KLASS.IDENT, src.slice(start, j), start, depth);
         i = j; continue;
@@ -1144,8 +1198,8 @@ class UniLexer {
         i = j; continue;
       }
       if (c === 0x2F && src.charCodeAt(i + 1) === 0x2A) {           // /* … */ (non-nested)
-        let j = i + 2; while (j < len && !(src.charCodeAt(j - 1) === 0x2A && src.charCodeAt(j) === 0x2F)) j++;
-        j = Math.min(j + 1, len);
+        let j = i + 2; while (j < len && !(src.charCodeAt(j) === 0x2A && src.charCodeAt(j + 1) === 0x2F)) j++;
+        j = Math.min(j + 2, len);
         const cmt = src.slice(start, j);
         emit(cmt.includes(String.fromCharCode(0x0A)) ? TAG_COMMENT_ML : TAG_COMMENT, KLASS.COMMENT, cmt, start, depth);
         i = j; continue;
@@ -1164,7 +1218,7 @@ class UniLexer {
       if (isDigit(c) || (c === 0x2E && isDigit(src.charCodeAt(i + 1)))) {
         const end = this._num(src, i);
         const lex = src.slice(start, end);
-        emit(/[.eE]/.test(lex) ? T.DOUBLE : T.NUMBER, KLASS.NUMBER, lex, start, depth);
+        emit(/[.eE]/.test(lex) && !/^0[xXbBoO]/.test(lex) ? T.DOUBLE : T.NUMBER, KLASS.NUMBER, lex, start, depth);
         i = end; continue;
       }
       if (isSqlIdentStart(c)) {
@@ -1394,7 +1448,7 @@ class UniLexer {
     return -1;
   }
 
-  _num(src, i) {
+  _num(src, i, bigint = false) {
     const len = src.length;
     let j = i;
     if (src.charCodeAt(j) === 0x30 && j + 1 < len && /[xXbBoO]/.test(src[j + 1])) {
@@ -1402,9 +1456,13 @@ class UniLexer {
     } else {
       while (j < len && /[\d_]/.test(src[j])) j++;
       if (src[j] === '.' && /\d/.test(src[j + 1] ?? '')) { j++; while (j < len && /[\d_]/.test(src[j])) j++; }
-      if (/[eE]/.test(src[j] ?? '')) { j++; if (/[+-]/.test(src[j] ?? '')) j++; while (j < len && /\d/.test(src[j])) j++; }
+      // an exponent only when digits follow ('1else' / '3eggs' stay apart)
+      if (/[eE]/.test(src[j] ?? '')) {
+        const k = /[+-]/.test(src[j + 1] ?? '') ? j + 2 : j + 1;
+        if (/\d/.test(src[k] ?? '')) { j = k; while (j < len && /\d/.test(src[j])) j++; }
+      }
     }
-    if (src[j] === 'n') j++;             // BigInt
+    if (bigint && src[j] === 'n') j++;   // BigInt (JS only)
     return j;
   }
 

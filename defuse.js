@@ -36,7 +36,9 @@ function extractDefUse(u) {
   let i = 0;
   while (i < len) {
     const t = tag(i);
-    if (t === T.KW_FUNCTION || t === T.KW_CLASS) {
+    // depth 0 only: a declaration nested in loose top-level code (an arrow
+    // body, an IIFE) is not a top-level definition
+    if ((t === T.KW_FUNCTION || t === T.KW_CLASS) && u.depthOf(i) === 0) {
       // def name = first IDENT before the body brace
       let nameIdx = -1;
       // body open = first LBRACE at local depth 0 after the keyword
