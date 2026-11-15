@@ -13,15 +13,19 @@ housekeeping wave (#11–#14: layout, line endings, surface conventions), the
 the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
+Then content search (#45–#47: `tfind.js`), a review pass with the first
+regression suite (#50), and the **HTML wave** (#51–#57: optional end tags,
+HTML mode in unilexer, content-based ends, attribute-free outlines, and a
+sample page that exercises all of it).
 
-## Unreleased — tfind: one-line match headers
+## PR #57 — tfind: one-line match headers · 2026-11-15
 
 - An HTML text token keeps its trailing newline, so `tfind 25.50
   samples/sample.html` split the `── token N: … ──` header across two
   lines. Newlines in the header are now shown as `\n` (and `\r` as `\r`),
   as `tdump` shows them. The zoomed text below is unchanged.
 
-## Unreleased — samples/sample.html
+## PR #56 — samples/sample.html · 2026-11-15
 
 - An HTML sample for `HTML_TABLE` and unilexer's HTML mode. It omits every
   end tag the spec allows, puts markup-looking text in `<title>`, `<style>`
@@ -31,7 +35,7 @@ direct bytes for closed vocabularies, indirection only for real variation).
   verdict (only the `<b>`), the implied closes, and that unilexer
   reconstructs it losslessly.
 
-## Unreleased — tdump --outline hides XML/HTML attributes
+## PR #55 — tdump --outline hides XML/HTML attributes · 2026-11-15
 
 - In XML/HTML, `--outline` printed every attribute as three rows under its
   tag (`I lang`, `=`, `" "en"`), which buried the element tree. The outline
@@ -44,7 +48,7 @@ direct bytes for closed vocabularies, indirection only for real variation).
   not its attributes.
 - Other languages are unchanged.
 
-## Unreleased — HTML: `<head>` and `<colgroup>` end at content they can't hold
+## PR #54 — HTML: `<head>` and `<colgroup>` end at content they can't hold · 2026-11-15
 
 - `<head><title>t</title><div>` left the `<div>` inside `<head>`. Only
   `<body>` ended `<head>`, and `<colgroup>` waited for a table start tag.
@@ -61,7 +65,7 @@ direct bytes for closed vocabularies, indirection only for real variation).
 - If the source still has an explicit `</head>` after body content, it is
   reported as `orphan-close-tag`. A browser ignores that tag too.
 
-## Unreleased — HTML: a block start tag ends `<p>` through inline elements
+## PR #53 — HTML: a block start tag ends `<p>` through inline elements · 2026-11-15
 
 - `<p><b>x<div>` reported the `<p>` as unclosed: a start tag only looked
   through the run of optional-end elements on top of the stack, and the
@@ -77,7 +81,7 @@ direct bytes for closed vocabularies, indirection only for real variation).
   `improper-nesting` ("still open when <div> ended <p>") — the same rule
   applies to `<li><a>x<li>`.
 
-## Unreleased — HTML mode for unilexer (tdump, tfind, tfreq)
+## PR #52 — HTML mode for unilexer (tdump, tfind, tfreq) · 2026-11-15
 
 - `.html`/`.htm` went through unilexer's plain XML mode, so `tdump
   --outline` showed every `<br>`, `<li>` and `<p>` as an unmatched `…?`, and
@@ -96,7 +100,7 @@ direct bytes for closed vocabularies, indirection only for real variation).
   is now `langOfPath()` / `tokenizeAs()` in `unilexer.js`; `--lang html`
   everywhere.
 
-## Unreleased — HTML: optional end tags are implied, not seams
+## PR #51 — HTML: optional end tags are implied, not seams · 2026-11-15
 
 - Follow-up to the HTML table: `<p>one<p>two`, `<li>a<li>b</ul>`,
   `<tr><td>1<td>2</table>` and a document that never writes `</body>` or
@@ -112,11 +116,11 @@ direct bytes for closed vocabularies, indirection only for real variation).
 - Linter-grade, deliberately: a start tag only ends elements in the run of
   optional-end elements on top of the stack, so a nested list's `<li>`
   can't close the outer one, but `<p><b>x<div>` still reports the `<p>`
-  (a browser would close it — fixed in a later PR, above). Content-based
+  (a browser would close it — fixed in #53). Content-based
   rules (a `<colgroup>` ended by any non-`<col>` content) are left out
-  (added in a later PR, above). Plain XML is unchanged.
+  (added in #54). Plain XML is unchanged.
 
-## Unreleased — review fixes: lexer edge cases, tool hangs, a test suite
+## PR #50 — review fixes: lexer edge cases, tool hangs, a test suite · 2026-11-15
 
 - Setback, found in a code review: `unilexer.js` had no assertions at all —
   `validate.js` only exercised `lexical-scanner.js`, and the demos print but
@@ -147,7 +151,7 @@ direct bytes for closed vocabularies, indirection only for real variation).
   text no longer swallows the next tag; `*`/`?` in the last path segment are
   expanded by the tool itself, so the README's `kernel\*.c` works from cmd.
 
-## Unreleased — XML: DOCTYPE internal subset stays one declaration (#48)
+## PR #49 — XML: DOCTYPE internal subset stays one declaration (fixes #48) · 2026-11-14
 
 - Setback, found by comparing against another XML viewer: a
   `<!DOCTYPE root [ … ]>` ended at the first `>` inside its internal subset
@@ -166,7 +170,24 @@ direct bytes for closed vocabularies, indirection only for real variation).
 - Regression sample: `samples/doctype-subset.xml` (comment, PI, quoted `>`
   and `]>` inside the subset). Existing `samples/sample.xml` output unchanged.
 
-## Unreleased — tfind.js: zoom into a tape by content, not depth
+## PR #47 — tfind.js: truncate long match lexemes; a Transsmart cross-cutting example · 2026-07-06
+
+- Setback, found by using it: the `── token N: … ──` header printed the whole
+  matched lexeme. A match inside a Postman request body, which is stored as
+  one string of several KB, produced a header line thousands of characters
+  long. The header now truncates at 80 characters; the zoomed text below
+  still prints in full.
+- `openapi-exploration/transsmart/README.md` gains an example where one
+  search cuts across many requests.
+
+## PR #46 — agv README: tfind.js findings across all 5 specs · 2026-07-06
+
+- `openapi-exploration/agv/README.md` gains a "Zooming in with tfind.js"
+  section covering all five AGV specs, including a case where the nearest
+  label is a bare `$ref` wrapper and `-u 3` widens to the full response
+  block.
+
+## PR #45 — tfind.js: zoom into a tape by content, not depth · 2026-07-05
 
 - New tool, `tfind.js`, answering the question `--outline` can't: "where
   does THIS text live in a file too big to peel depth-layer by depth-layer,
