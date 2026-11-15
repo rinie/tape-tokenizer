@@ -644,6 +644,7 @@ class UniLexer {
     const optEnd = html ? HTML_TABLE.optionalEnd : null;
     const rawText = html ? HTML_TABLE.rawTextElements : null;
     const phrasing = html ? HTML_TABLE.phrasingElements : null;
+    const byContent = html ? HTML_TABLE.endedByContent : null;
 
     const stack = [];   // open tags: { idx, name }
     let depth = 0;
@@ -666,11 +667,15 @@ class UniLexer {
       let target = -1;
       for (let s = stack.length - 1; s >= 0; s--) {
         const closers = optEnd.get(stack[s].name);
-        if (closers) { if (closers.has(name)) target = s; continue; }
+        const allowed = byContent.get(stack[s].name);
+        if (closers) { if (closers.has(name) || (allowed && !allowed.has(name))) target = s; continue; }
         if (!phrasing.has(stack[s].name)) break;
       }
       while (target !== -1 && stack.length > target) impliedClose(stack.pop(), at);
     };
+    // Text that is not whitespace ends a content-ended element (<head>,
+    // <colgroup>) on top of the stack — same rule as lexical-scanner.
+    const endsOnText = () => !!byContent && stack.length > 0 && byContent.has(stack[stack.length - 1].name);
     // After a raw-text element's start tag: everything up to its own close
     // tag is content (one TEXT token, or whitespace).
     const skipRawText = (from) => {
@@ -718,6 +723,7 @@ class UniLexer {
           while (j < len && isNameChar(src.charCodeAt(j))) j++;
           const name = fold(src.slice(nameStart, j));
           if (!name) {                                               // bare '<' — punct
+            if (endsOnText()) impliedClose(stack.pop(), start);
             emit(0x3C, KLASS.PUNCT, '<', start, depth);
             i++; continue;
           }
@@ -770,7 +776,13 @@ class UniLexer {
         let j = i; while (j < len && src.charCodeAt(j) !== 0x3C) j++;
         const run = src.slice(start, j);
         if (/^\s+$/.test(run)) this._emitWs((tg, lx, of, d) => emit(tg, KLASS.WS, lx, of, d), src, start, j, depth);
-        else emit(0x54, KLASS.TEXT, run, start, depth);              // 'T'
+        else if (endsOnText()) {
+          // leading whitespace stays inside; the element ends at the text
+          const k = start + run.search(/\S/);
+          if (k > start) this._emitWs((tg, lx, of, d) => emit(tg, KLASS.WS, lx, of, d), src, start, k, depth);
+          impliedClose(stack.pop(), k);
+          emit(0x54, KLASS.TEXT, src.slice(k, j), k, depth);
+        } else emit(0x54, KLASS.TEXT, run, start, depth);            // 'T'
         i = j; continue;
       }
 

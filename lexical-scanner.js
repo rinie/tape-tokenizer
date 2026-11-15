@@ -500,13 +500,15 @@ class LexicalScanner {
     // passed over on the way (<p><b>x<div>) is closed too, as the HTML parser
     // does, but its end tag was NOT optional: that one is reported.
     const phrasing = table.phrasingElements || null;
+    const byContent = table.endedByContent || null;
     const impliedByStart = (name, offset) => {
       if (!optEnd) return;
       let target = -1;
       for (let s = stack.length - 1; s >= 0; s--) {
         const elName = this._internNames[stack[s].nameId];
         const closers = optEnd.get(elName);
-        if (closers) { if (closers.has(name)) target = s; continue; }
+        const allowed = byContent && byContent.get(elName);
+        if (closers) { if (closers.has(name) || (allowed && !allowed.has(name))) target = s; continue; }
         if (!phrasing || !phrasing.has(elName)) break;
       }
       while (target !== -1 && stack.length > target) {
@@ -526,10 +528,21 @@ class LexicalScanner {
       }
     };
 
+    // Text that is not whitespace ends a content-ended element on top of the
+    // stack (<head>, <colgroup>) — the implied end sits where the text starts.
+    const impliedByText = (offset) => {
+      if (!byContent || !stack.length) return;
+      if (byContent.has(this._internNames[stack[stack.length - 1].nameId])) this._impliedClose(stack.pop(), offset);
+    };
+
     let i = 0;
     scanLoop:
     while (i < len) {
-      if (src.charCodeAt(i) !== 0x3C) { i++; continue; }   // not '<'
+      const ch = src.charCodeAt(i);
+      if (ch !== 0x3C) {                                    // not '<'
+        if (byContent && ch !== 0x20 && ch !== 0x09 && ch !== 0x0A && ch !== 0x0D && ch !== 0x0C) impliedByText(i);
+        i++; continue;
+      }
 
       // comment / declaration / PI / CDATA — skip as opaque spans
       if (startsWith(src, i, '<!--')) {
@@ -567,7 +580,7 @@ class LexicalScanner {
 
       // A '<' not followed by a name ('a < b', '<>') is text, not a tag —
       // skipping to the next '>' would swallow the real tag after it.
-      if (name === '') { i++; continue; }
+      if (name === '') { impliedByText(i); i++; continue; }
 
       const r = this._skipTag(src, i);
       if (r.unterminated) { this._stopUnterminated('unterminated-tag', '<', start); break scanLoop; }
@@ -930,8 +943,9 @@ const XML_TABLE = { mode: 'xml' };
 // The rules are the WHATWG "optional tags" section, linter-grade: a start tag
 // only ends elements reachable through optional-end and inline (phrasing)
 // elements on top of the stack (no full "scope" algorithm — any other element
-// bounds the search), and the content-based rules (a <colgroup> ended by any
-// non-<col> content, <head> by body content) are left out.
+// bounds the search). <head> and <colgroup> are also ended by CONTENT they
+// cannot hold: any start tag outside their short allowed list, or text that
+// is not whitespace.
 const P_CLOSERS = ['address', 'article', 'aside', 'blockquote', 'center', 'details',
   'dialog', 'dir', 'div', 'dl', 'fieldset', 'figcaption', 'figure', 'footer', 'form',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr', 'li', 'dd', 'dt',
@@ -943,6 +957,14 @@ const HTML_TABLE = {
   caseInsensitive: true,
   voidElements: new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
     'link', 'meta', 'param', 'source', 'track', 'wbr']),
+  // content-based optional ends: element → the start tags it may contain.
+  // Any other start tag, or non-whitespace text, ends it (<head> by the
+  // first body content, <colgroup> by anything but <col>).
+  endedByContent: new Map(Object.entries({
+    head:     ['base', 'basefont', 'bgsound', 'link', 'meta', 'noframes', 'noscript',
+      'script', 'style', 'template', 'title'],
+    colgroup: ['col', 'template'],
+  }).map(([k, v]) => [k, new Set(v)])),
   // inline elements a start tag may END through to reach an optional-end
   // element (<p><b>x<div> ends the <b> and the <p>). The ones the HTML
   // parser treats as scope barriers (<button>, <object>, …) are left out.
