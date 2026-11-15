@@ -18,7 +18,17 @@ regression suite (#50), and the **HTML wave** (#51–#57: optional end tags,
 HTML mode in unilexer, content-based ends, attribute-free outlines, and a
 sample page that exercises all of it).
 
-## Unreleased — tdump --outline --clike: a C-like layout for XML/HTML
+## Unreleased — --clike: braces match
+
+- In #59's layout an element whose HTML end tag was omitted opened with `{`
+  and closed with `~` (`li {` … `~`), so the `{` had no `}`. It now opens
+  with `~` too (`li ~` … `~`, folded `li ~ … 10 … ~`): every `{` has its
+  `}`, and every `~` opener has its `~`.
+- This also applies to an element the scanner closes implicitly although its
+  end tag was required (the `<b>` in `samples/sample.html`); `scan.js`
+  still reports that one.
+
+## PR #59 — tdump --outline --clike: a C-like layout for XML/HTML · 2026-11-15
 
 - A second layout for the XML/HTML outline, next to the default one where
   the symbol comes first (`{ book` … `} book`). With `--clike` the name
