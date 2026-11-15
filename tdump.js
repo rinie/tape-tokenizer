@@ -30,10 +30,9 @@
 //                explicitly — that deviation is worth seeing.
 
 import { readFileSync } from 'node:fs';
-import { extname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { UniLexer, KLASS, KLASS_NAME } from './unilexer.js';
+import { KLASS, KLASS_NAME, LANGS, langOfPath, tokenizeAs as tokenize } from './unilexer.js';
 
 const VERSION = '0.1.0';
 
@@ -54,9 +53,9 @@ OPTIONS
                    depth < n print; a matched span starting at depth n-1 folds
                    to one line (\`{ … 12 … }\`) via its link. Trivia and bare
                    punct (: , ;) are always dropped. Raise n to peel a layer.
-  -l, --lang <l>   Force language: js | xml | rust | sql | py | yaml | json5.
-                   Default: detect from the file
-                   extension (.xml/.html/.htm/.svg -> xml, .rs -> rust,
+  -l, --lang <l>   Force language: js | xml | html | rust | sql | py | yaml |
+                   json5. Default: detect from the file extension
+                   (.xml/.svg -> xml, .html/.htm -> html, .rs -> rust,
                    .sql/.pks/.pkb -> sql [Oracle], .py -> py,
                    .yaml/.yml -> yaml, .json/.json5/.jsonc -> json5, else js).
   -h, --help       Show this help and exit.
@@ -68,7 +67,9 @@ COLUMNS
   The tag char is the mnemonic for the STRUCTURAL role, not the surface syntax:
   keywords whisper lowercase, literals shout uppercase, brackets are literal —
   and in XML mode an open tag is { and a close tag is }, with the tag NAME as
-  the value (interned: <book> and </book> share the same pool slot).
+  the value (interned: <book> and </book> share the same pool slot). A
+  complete tag (<br/>, an HTML void <br>) is /. In HTML mode an omitted
+  optional end tag (</p>, </li>, </td>, </body>) shows as a zero-width ~.
   Interned classes (ws, ident, keyword, op, punct, bracket, tag) reuse pool
   slots; literal classes (string, number, comment, text, …) get one slot per
   occurrence.
@@ -165,15 +166,6 @@ function briefWs(lexeme, unit, state, isNl, nextIsIntraWs) {
   return JSON.stringify(lexeme);                // mixed — explicit
 }
 
-function tokenize(src, lang) {
-  return lang === 'xml' ? new UniLexer().tokenizeXml(src)
-    : lang === 'rust' ? new UniLexer().tokenizeRust(src)
-    : lang === 'sql' ? new UniLexer().tokenizeSql(src)
-    : lang === 'py' ? new UniLexer().tokenizePy(src)
-    : lang === 'yaml' ? new UniLexer().tokenizeYaml(src)
-    : lang === 'json5' ? new UniLexer().tokenizeJson5(src)
-    : new UniLexer().tokenize(src);
-}
 
 // The breadth-first viewer (mirrors scan.js's toOutline for the older tape,
 // generalised across unilexer's THREE bracket families — char-matched,
@@ -242,7 +234,7 @@ function dumpTokens(src, mode = 'brief', lang = 'js') {
     // xml: a bare '>' after attributes is a tag-closing separator, not signal.
     // ('/>' stays — it says the element closed.) Attribute-less tags absorb
     // their '>' into the tag token, so this row only occurs after attributes.
-    if (mode === 'signal' && lang === 'xml' && klass === KLASS.PUNCT && u.lexemeOf(t) === '>') continue;
+    if (mode === 'signal' && (lang === 'xml' || lang === 'html') && klass === KLASS.PUNCT && u.lexemeOf(t) === '>') continue;
 
     const lexeme = u.lexemeOf(t);
     let value;
@@ -291,17 +283,8 @@ function main() {
 
   const mode = values.full ? 'full' : values.signal ? 'signal' : 'brief';
   let lang = values.lang;
-  if (lang && !['js', 'xml', 'rust', 'sql', 'py', 'yaml', 'json5'].includes(lang)) fail(`unknown --lang '${lang}' (expected js | xml | rust | sql | py | yaml | json5)`);
-  if (!lang) {
-    const ext = positionals[0] === '-' ? '' : extname(positionals[0]).toLowerCase();
-    lang = ['.xml', '.html', '.htm', '.svg'].includes(ext) ? 'xml'
-      : ext === '.rs' ? 'rust'
-      : ['.sql', '.pks', '.pkb', '.plsql'].includes(ext) ? 'sql'
-      : ext === '.py' ? 'py'
-      : ['.yaml', '.yml'].includes(ext) ? 'yaml'
-      : ['.json', '.json5', '.jsonc'].includes(ext) ? 'json5'
-      : 'js';
-  }
+  if (lang && !LANGS.includes(lang)) fail(`unknown --lang '${lang}' (expected ${LANGS.join(' | ')})`);
+  if (!lang) lang = (positionals[0] === '-' ? null : langOfPath(positionals[0])) ?? 'js';
   let outlineDepth = 0;
   if (values.outline !== undefined) {
     outlineDepth = parseInt(values.outline, 10);

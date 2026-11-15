@@ -14,6 +14,25 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — HTML mode for unilexer (tdump, tfind, tfreq)
+
+- `.html`/`.htm` went through unilexer's plain XML mode, so `tdump
+  --outline` showed every `<br>`, `<li>` and `<p>` as an unmatched `…?`, and
+  a `<` inside a `<script>` opened a bogus tag.
+- New `tokenizeHtml()` — `tokenizeXml()` with the `HTML_TABLE` rules,
+  IMPORTED from `lexical-scanner.js` so both scanners share one rule list:
+  names fold to lower case, void elements are complete `/` tokens, omitted
+  optional end tags become zero-width `~` tokens linked to their opener,
+  and raw-text elements (`<script>`, `<style>`, `<textarea>`, `<title>`)
+  hold one TEXT token. The last rule is new to `scan.js` as well.
+- `tfind` breadcrumbs now include name-matched openers: in XML/HTML the
+  chain is the enclosing elements (`li <- ul#menu <- body`), and the zoom is
+  the innermost element, through its close tag (or up to where it was
+  implicitly ended).
+- The language dispatch that tdump, tfind and tfreq each carried a copy of
+  is now `langOfPath()` / `tokenizeAs()` in `unilexer.js`; `--lang html`
+  everywhere.
+
 ## Unreleased — HTML: optional end tags are implied, not seams
 
 - Follow-up to the HTML table: `<p>one<p>two`, `<li>a<li>b</ul>`,

@@ -565,6 +565,15 @@ class LexicalScanner {
         const nameId = this._intern(name);
         const idx = this._emit(X_OPEN, start, stack.length, nameId);
         stack.push({ idx, nameId });
+        // HTML raw-text element (<script>, <style>, …): its content is not
+        // markup — a '<' in a script must not open a tag. Jump to its close.
+        if (table.rawTextElements && table.rawTextElements.has(name)) {
+          const re = new RegExp(`</${name}(?=[\\s/>]|$)`, 'ig');
+          re.lastIndex = r.end;
+          const m = re.exec(src);
+          i = m ? m.index : len;
+          continue;
+        }
       }
       i = r.end;
     }
@@ -892,11 +901,13 @@ const PYTHON_TABLE = {
 
 const XML_TABLE = { mode: 'xml' };
 
-// HTML rides the XML scanner with three relaxations: tag names fold to lower
-// case, the void elements are complete without a close tag, and the elements
-// with OPTIONAL end tags are ended implicitly — by a start tag that the spec
-// says ends them, by their parent's close tag, or by end of input. Each such
-// end is a zero-width '~' token on the tape, never reported as a seam.
+// HTML rides the XML scanner with four relaxations: tag names fold to lower
+// case, the void elements are complete without a close tag, raw-text elements
+// (<script>, <style>, …) hold text, not markup, and the elements with
+// OPTIONAL end tags are ended implicitly — by a start tag that the spec says
+// ends them, by their parent's close tag, or by end of input. Each such end
+// is a zero-width '~' token on the tape, never reported as a seam.
+// unilexer.js's tokenizeHtml() imports this same table.
 //
 // The rules are the WHATWG "optional tags" section, linter-grade: a start tag
 // only ends elements in the run of optional-end elements on top of the stack
@@ -913,6 +924,8 @@ const HTML_TABLE = {
   caseInsensitive: true,
   voidElements: new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
     'link', 'meta', 'param', 'source', 'track', 'wbr']),
+  // content is text up to the element's own close tag — never markup
+  rawTextElements: new Set(['script', 'style', 'textarea', 'title']),
   // element → the start tags that end it (an empty set: ended only by its
   // parent's close tag or end of input)
   optionalEnd: new Map(Object.entries({

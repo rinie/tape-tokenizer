@@ -39,6 +39,9 @@
 
 import { readFileSync } from 'node:fs';
 import { T, KEYWORDS, OPS, OP_LITERAL, OP_CONCAT, SQL_OP_ROLES } from './token-tags.js';
+import { HTML_TABLE } from './lexical-scanner.js';   // the HTML rules: ONE source of truth
+
+const TAG_IMPLIED = 0x7E;     // '~'  zero-width implied close (HTML optional end tag)
 
 // ── classes (coarse, derived from the tag byte) ──────────────────────────────
 const KLASS = {
@@ -131,6 +134,7 @@ TAG_CLASS_XML[0x21] = KLASS.DECL;               // !  <?…?> <!…> <![CDATA[�
 TAG_CLASS_XML[0x7B] = KLASS.TAG;                // {  open tag
 TAG_CLASS_XML[0x7D] = KLASS.TAG;                // }  close tag
 TAG_CLASS_XML[0x2F] = KLASS.TAG;                // /  complete self-closing tag
+TAG_CLASS_XML[0x7E] = KLASS.TAG;                // ~  implied close (HTML optional end tag)
 TAG_CLASS_XML[0x54] = KLASS.TEXT;               // T  text content
 TAG_CLASS_XML[T.STRING] = KLASS.STRING;         // "  attribute values
 TAG_CLASS_XML[T.STRING_SQ] = KLASS.STRING;      // '  attribute values
@@ -618,7 +622,15 @@ class UniLexer {
   // ident/op/string and '>' / '/>' as punct. Outside, text runs are one TEXT
   // token (whitespace-only runs are WS). Tag pairs are name-matched onto the
   // link array, tolerantly (no fault on improper nesting or orphans).
-  tokenizeXml(src) {
+  //
+  // HTML mode (tokenizeHtml) adds the HTML_TABLE rules shared with
+  // lexical-scanner.js: names fold to lower case (the pooled value; rawOf
+  // still reads the source span), void elements (<br>, <img>) are complete
+  // '/' tokens, optional end tags (<p>, <li>, <td>, …) are ended by a
+  // ZERO-WIDTH implied-close token '~' (never a fabricated '</p>'), and the
+  // content of raw-text elements (<script>, <style>, <textarea>, <title>)
+  // is one TEXT token — a '<' inside a script is not a tag.
+  tokenizeXml(src, opts = {}) {
     const len = src.length;
     const tp = this._tape();
     const { emit, link } = tp;
@@ -626,10 +638,53 @@ class UniLexer {
     const isNameChar = (c) => (c >= 0x61 && c <= 0x7A) || (c >= 0x41 && c <= 0x5A) ||
       (c >= 0x30 && c <= 0x39) || c === 0x2D || c === 0x5F || c === 0x3A || c === 0x2E;
 
-    const stack = [];   // open tags: { idx, poolIdx }
+    const html = !!opts.html;
+    const fold = html ? (s) => s.toLowerCase() : (s) => s;
+    const voids = html ? HTML_TABLE.voidElements : null;
+    const optEnd = html ? HTML_TABLE.optionalEnd : null;
+    const rawText = html ? HTML_TABLE.rawTextElements : null;
+
+    const stack = [];   // open tags: { idx, name }
     let depth = 0;
     let inTag = false;
+    let curVoid = false;     // inside the attributes of a void element's tag
+    let rawUntil = null;     // raw-text element whose content follows this tag
     let i = 0;
+
+    const impliedClose = (entry, at) => {
+      depth = depth > 0 ? depth - 1 : 0;
+      const idx = emit(TAG_IMPLIED, KLASS.TAG, entry.name, at, depth);
+      link(entry.idx, idx);
+    };
+    // A start tag ends the optional-end elements it may legally follow —
+    // searched only through the run of optional-end elements on top of the
+    // stack (same rule as lexical-scanner's _scanXml).
+    const impliedByStart = (name, at) => {
+      if (!optEnd) return;
+      let target = -1;
+      for (let s = stack.length - 1; s >= 0; s--) {
+        const closers = optEnd.get(stack[s].name);
+        if (!closers) break;
+        if (closers.has(name)) target = s;
+      }
+      while (target !== -1 && stack.length > target) impliedClose(stack.pop(), at);
+    };
+    // After a raw-text element's start tag: everything up to its own close
+    // tag is content (one TEXT token, or whitespace).
+    const skipRawText = (from) => {
+      const name = rawUntil;
+      rawUntil = null;
+      if (!name) return from;
+      const re = new RegExp(`</${name}(?=[\\s/>]|$)`, 'ig');
+      re.lastIndex = from;
+      const m = re.exec(src);
+      const end = m ? m.index : len;
+      if (end > from) {
+        if (/^\s+$/.test(src.slice(from, end))) this._emitWs((tg, lx, of, d) => emit(tg, KLASS.WS, lx, of, d), src, from, end, depth);
+        else emit(0x54, KLASS.TEXT, src.slice(from, end), from, depth);
+      }
+      return end;
+    };
 
     while (i < len) {
       const start = i;
@@ -659,11 +714,12 @@ class UniLexer {
           let j = i + (isClose ? 2 : 1);
           const nameStart = j;
           while (j < len && isNameChar(src.charCodeAt(j))) j++;
-          const name = src.slice(nameStart, j);
+          const name = fold(src.slice(nameStart, j));
           if (!name) {                                               // bare '<' — punct
             emit(0x3C, KLASS.PUNCT, '<', start, depth);
             i++; continue;
           }
+          if (!isClose) impliedByStart(name, start);                 // <li> ends an open <li>
           // attribute-less complete self-closing tag <br/> — ONE token, self-linked
           if (!isClose && src.charCodeAt(j) === 0x2F && src.charCodeAt(j + 1) === 0x3E) {
             const idx = emit(0x2F, KLASS.TAG, name, start, depth);   // '/'
@@ -671,25 +727,40 @@ class UniLexer {
             i = j + 2; continue;
           }
           if (isClose) {
-            depth = depth > 0 ? depth - 1 : 0;
-            const idx = emit(0x7D, KLASS.TAG, name, start, depth);   // '}'
-            // tolerant name-match: nearest open with the same pool slot
+            // tolerant name-match: nearest open with the same name
+            let found = -1;
             for (let s = stack.length - 1; s >= 0; s--) {
-              if (stack[s].poolIdx === tp.poolOf(idx)) {
-                link(stack[s].idx, idx);
-                stack.splice(s, 1);
-                break;
+              if (stack[s].name === name) { found = s; break; }
+            }
+            // HTML: optional-end elements still open inside it end here
+            // (</ul> ends the last <li>) — implied, before the real close
+            if (found !== -1 && optEnd) {
+              for (let s = stack.length - 1; s > found; s--) {
+                if (optEnd.has(stack[s].name)) impliedClose(stack.splice(s, 1)[0], start);
               }
             }
+            depth = depth > 0 ? depth - 1 : 0;
+            const idx = emit(0x7D, KLASS.TAG, name, start, depth);   // '}'
+            if (found !== -1) {
+              link(stack[found].idx, idx);
+              stack.splice(found, 1);
+            }
+          } else if (voids && voids.has(name)) {
+            // HTML void element <br> / <img src=…> — complete on its own:
+            // the same self-linked '/' token as an XML <br/>
+            const idx = emit(0x2F, KLASS.TAG, name, start, depth);   // '/'
+            link(idx, idx);
+            curVoid = true;
           } else {
             const idx = emit(0x7B, KLASS.TAG, name, start, depth);   // '{'
-            stack.push({ idx, poolIdx: tp.poolOf(idx) });
+            stack.push({ idx, name });
             depth++;
+            if (rawText && rawText.has(name)) rawUntil = name;
           }
           // '>' directly after the name (no attributes): the closing separator
           // belongs to the tag — <catalog> is ONE token. The token's span
           // includes the '>' (rawOf reads spans), so losslessness holds.
-          if (src.charCodeAt(j) === 0x3E) { i = j + 1; continue; }
+          if (src.charCodeAt(j) === 0x3E) { curVoid = false; i = skipRawText(j + 1); continue; }
           i = j; inTag = true; continue;
         }
         // text run up to the next '<'; whitespace-only runs split into
@@ -715,13 +786,19 @@ class UniLexer {
       }
       if (c === 0x3E) {                                              // '>'
         emit(0x3E, KLASS.PUNCT, '>', start, depth);
-        i++; inTag = false; continue;
+        inTag = false; curVoid = false;
+        i = skipRawText(i + 1); continue;
       }
       if (c === 0x2F && src.charCodeAt(i + 1) === 0x3E) {            // '/>' self-close
+        if (curVoid) {                                               // <img …/>: already complete
+          emit(0x3E, KLASS.PUNCT, '/>', start, depth);
+          i += 2; inTag = false; curVoid = false; continue;
+        }
         depth = depth > 0 ? depth - 1 : 0;
         const idx = emit(0x3E, KLASS.PUNCT, '/>', start, depth);
         const top = stack.pop();
         if (top) link(top.idx, idx);
+        rawUntil = null;                                             // <script/> has no content
         i += 2; inTag = false; continue;
       }
       if (isNameChar(c)) {                                           // attr name
@@ -734,7 +811,19 @@ class UniLexer {
       i++;
     }
 
+    // End of input ends every optional-end element still open (</body>,
+    // </html>, a trailing </li> …) — zero-width, at EOF.
+    if (optEnd) {
+      for (let s = stack.length - 1; s >= 0; s--) {
+        if (optEnd.has(stack[s].name)) impliedClose(stack.splice(s, 1)[0], len);
+      }
+    }
+
     return tp.finish(this, src, TAG_CLASS_XML, true);
+  }
+
+  tokenizeHtml(src) {
+    return this.tokenizeXml(src, { html: true });
   }
 
   // Split a whitespace run [from,to) into NEWLINE tokens (TAG_NL — each
@@ -1590,4 +1679,38 @@ class UniLexer {
   }
 }
 
-export { UniLexer, KLASS, KLASS_NAME, TAG_CLASS, INTERNED };
+// ── language dispatch (shared by tdump / tfind / tfreq) ─────────────────────
+const LANGS = ['js', 'xml', 'html', 'rust', 'sql', 'py', 'yaml', 'json5'];
+const EXT_LANG = {
+  '.js': 'js', '.mjs': 'js', '.cjs': 'js', '.jsx': 'js',
+  '.xml': 'xml', '.svg': 'xml',
+  '.html': 'html', '.htm': 'html',
+  '.rs': 'rust',
+  '.sql': 'sql', '.pks': 'sql', '.pkb': 'sql', '.plsql': 'sql',
+  '.py': 'py',
+  '.yaml': 'yaml', '.yml': 'yaml',
+  '.json': 'json5', '.json5': 'json5', '.jsonc': 'json5',
+};
+
+// Language for a file path by extension, or null when unknown.
+function langOfPath(path) {
+  const m = /\.[^./\\]+$/.exec(String(path));
+  return m ? EXT_LANG[m[0].toLowerCase()] ?? null : null;
+}
+
+// Tokenize src as one of LANGS (anything else: JS).
+function tokenizeAs(src, lang) {
+  const u = new UniLexer();
+  switch (lang) {
+    case 'xml':   return u.tokenizeXml(src);
+    case 'html':  return u.tokenizeHtml(src);
+    case 'rust':  return u.tokenizeRust(src);
+    case 'sql':   return u.tokenizeSql(src);
+    case 'py':    return u.tokenizePy(src);
+    case 'yaml':  return u.tokenizeYaml(src);
+    case 'json5': return u.tokenizeJson5(src);
+    default:      return u.tokenize(src);
+  }
+}
+
+export { UniLexer, KLASS, KLASS_NAME, TAG_CLASS, INTERNED, LANGS, EXT_LANG, langOfPath, tokenizeAs };
