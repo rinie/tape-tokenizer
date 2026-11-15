@@ -14,6 +14,13 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — tfind: one-line match headers
+
+- An HTML text token keeps its trailing newline, so `tfind 25.50
+  samples/sample.html` split the `── token N: … ──` header across two
+  lines. Newlines in the header are now shown as `\n` (and `\r` as `\r`),
+  as `tdump` shows them. The zoomed text below is unchanged.
+
 ## Unreleased — samples/sample.html
 
 - An HTML sample for `HTML_TABLE` and unilexer's HTML mode. It omits every

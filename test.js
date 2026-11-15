@@ -271,6 +271,12 @@ test('tfind: HTML breadcrumb names elements and zooms to the innermost', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('tfind: a match ending in a newline keeps its header on one line', () => {
+  const r = spawnSync(process.execPath, ['tfind.js', '25.50', 'samples/sample.html'], { timeout: 5000, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^── token \d+: 25\.50\\n {3}──$/m);   // '25.50\n  ' + ' ──'
+});
+
 console.log('\n── tools ──');
 
 test('mergeGate: an unterminated string in the merge is not safe', () => {

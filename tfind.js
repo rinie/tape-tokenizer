@@ -193,7 +193,9 @@ function main() {
   const out = [];
   out.push(`${matches.length} match(es) for ${JSON.stringify(needle)}`);
   for (const m of matches) {
-    const lex = u.lexemeOf(m);
+    // newlines escaped (an HTML text token keeps its trailing '\n', and a
+    // raw newline would split the header line), as tdump shows them
+    const lex = u.lexemeOf(m).replace(/\r/g, '\\r').replace(/\n/g, '\\n');
     const shownLex = lex.length > 80 ? lex.slice(0, 80) + '…' : lex;  // a matched
     // token can be an entire raw request body (Postman stores it as ONE
     // string) — truncate the header line, the zoomed text below is unaffected
