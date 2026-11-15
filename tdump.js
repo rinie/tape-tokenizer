@@ -57,7 +57,8 @@ OPTIONS
       --clike      With --outline, XML/HTML in a C-like layout: the name
                    before the brace and a bare close (book { … }), an empty
                    element as a statement (br;), text as a quoted string.
-                   An omitted HTML end tag still shows as ~.
+                   An element whose HTML end tag was omitted opens and
+                   closes with ~ (li ~ … ~), so every { has its }.
   -l, --lang <l>   Force language: js | xml | html | rust | sql | py | yaml |
                    json5. Default: detect from the file extension
                    (.xml/.svg -> xml, .html/.htm -> html, .rs -> rust,
@@ -211,14 +212,20 @@ function skipAttributes(u, n, t) {
 
 // --clike: XML/HTML in a C-like layout — the name BEFORE the brace and a bare
 // closing brace (`book {` … `}`), an element with no content as a statement
-// (`br;`), text as a string literal. An omitted HTML end tag keeps its own
-// `~` instead of `}`: the tape never claims a close that is not in the
-// source. Everything else (declarations, other languages) is unchanged.
+// (`br;`), text as a string literal. An element whose HTML end tag was
+// omitted opens AND closes with `~` (`li ~` … `~`): braces always match, and
+// the view never claims a close that is not in the source. Everything else
+// (declarations, other languages) is unchanged.
 function clikeLabel(u, t, unmatched) {
   const tag = u.tagOf(t);
   const lex = u.lexemeOf(t);
   if (u.classOf(t) === KLASS.TAG) {
-    if (tag === 0x7B) return `${lex} {`;
+    if (tag === 0x7B) {
+      // braces match: an element whose end tag was omitted opens with the
+      // same '~' it closes with (li ~ … ~), never a '{' with no '}'
+      const link = u.linkOf(t);
+      return link !== -1 && u.tagOf(link) === 0x7E ? `${lex} ~` : `${lex} {`;
+    }
     if (tag === 0x2F) return `${lex};`;
     if (tag === 0x7E) return '~';
     if (tag === 0x7D) return unmatched ? `} ${lex}` : '}';   // an orphan close keeps its name
