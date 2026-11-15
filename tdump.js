@@ -52,7 +52,8 @@ OPTIONS
   -o, --outline <n>  Breadth-first view, folded at depth n (n >= 1): tokens at
                    depth < n print; a matched span starting at depth n-1 folds
                    to one line (\`{ … 12 … }\`) via its link. Trivia and bare
-                   punct (: , ;) are always dropped. Raise n to peel a layer.
+                   punct (: , ;) are always dropped, and so are XML/HTML
+                   attributes. Raise n to peel a layer.
   -l, --lang <l>   Force language: js | xml | html | rust | sql | py | yaml |
                    json5. Default: detect from the file extension
                    (.xml/.svg -> xml, .html/.htm -> html, .rs -> rust,
@@ -176,7 +177,10 @@ function briefWs(lexeme, unit, state, isNl, nextIsIntraWs) {
 // its link, O(1) per fold — unmatched openers are never folded (never guess
 // a missing close; they print open with a trailing `…?`, same as repairMap).
 // Trivia (ws/comment) and bare structural punct (: , ;) are always dropped —
-// pure separator noise once indentation already shows the nesting.
+// pure separator noise once indentation already shows the nesting. So are
+// XML/HTML attributes: an outline is the element tree, and `name = "value"`
+// rows under every tag drown it (they stay on the tape; the dump modes show
+// them).
 function outlineLabel(u, t) {
   const klass = u.classOf(t);
   if (klass === KLASS.BRACKET) return u.mnemonicOf(t);
@@ -186,9 +190,25 @@ function outlineLabel(u, t) {
   return (!lex || lex === mnem) ? mnem : `${mnem} ${lex}`;
 }
 
+// After a start tag token, the index past its attributes: an element whose
+// tag has attributes is the name token, then attribute tokens (names, '=',
+// quoted values, whitespace), then a '>' or '/>' PUNCT — a tag without
+// attributes carries its '>' itself, and the next token is already content.
+function skipAttributes(u, n, t) {
+  let j = t + 1;
+  while (j < n) {
+    const k = u.classOf(j);
+    if (k === KLASS.TAG || k === KLASS.TEXT || k === KLASS.COMMENT || k === KLASS.DECL) return j;
+    if (k === KLASS.PUNCT && (u.lexemeOf(j) === '>' || u.lexemeOf(j) === '/>')) return j + 1;
+    j++;
+  }
+  return j;
+}
+
 function outlineView(src, lang, maxDepth) {
   const u = tokenize(src, lang);
   const n = u.length;
+  const markup = lang === 'xml' || lang === 'html';
   const lines = [];
   let t = 0;
   while (t < n) {
@@ -199,8 +219,16 @@ function outlineView(src, lang, maxDepth) {
     const indent = '  '.repeat(d);
     const link = u.linkOf(t);
     const isOpener = link !== -1 && link > t;
+    // <b y="2"/>: an element closed by the '/>' after its attributes is one
+    // self-contained line, the same '/' as an attribute-less <c/>
+    if (markup && isOpener && u.classOf(link) === KLASS.PUNCT) {
+      lines.push(`${indent}/ ${u.lexemeOf(t)}`);
+      t = link + 1;
+      continue;
+    }
     if (isOpener && d === maxDepth - 1) {
-      const inner = link - t - 1;
+      // count the element's content, not its (hidden) attributes
+      const inner = link - (markup && klass === KLASS.TAG ? skipAttributes(u, n, t) : t + 1);
       const label = `${outlineLabel(u, t)}`;
       const closeLabel = outlineLabel(u, link);
       lines.push(inner <= 0 ? `${indent}${label}${closeLabel}` : `${indent}${label} … ${inner} … ${closeLabel}`);
@@ -209,7 +237,9 @@ function outlineView(src, lang, maxDepth) {
     }
     const unmatched = link === -1 && (klass === KLASS.BRACKET || klass === KLASS.TAG);
     lines.push(indent + outlineLabel(u, t) + (unmatched ? ' …?' : ''));
-    t++;
+    // a start tag (open '{' or void '/'): its attributes are not structure
+    const tag = u.tagOf(t);
+    t = markup && klass === KLASS.TAG && (tag === 0x7B || tag === 0x2F) ? skipAttributes(u, n, t) : t + 1;
   }
   return `outline (folded at depth ${maxDepth}; raise to peel a layer):\n${lines.join('\n')}`;
 }
@@ -301,4 +331,4 @@ function main() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
 
-export { dumpTokens, detectIndentUnit, briefWs };
+export { dumpTokens, detectIndentUnit, briefWs, outlineView };
