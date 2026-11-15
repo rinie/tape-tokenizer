@@ -15,13 +15,14 @@
 //     either kind of label — printed in full, exact source text (lossless,
 //     the same span-slice §13b already uses elsewhere).
 // Neither convention is guessed at semantically; both are read straight off
-// the tape's own key/value and sibling structure.
+// the tape's own key/value and sibling structure. In XML/HTML the containers
+// are elements, labelled by tag name (plus #id), so the zoom is the
+// innermost element around the match.
 
 import { readFileSync } from 'node:fs';
-import { extname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { UniLexer, KLASS } from './unilexer.js';
+import { KLASS, LANGS, langOfPath, tokenizeAs as tokenize } from './unilexer.js';
 
 const VERSION = '0.1.0';
 
@@ -32,7 +33,8 @@ USAGE
 
 OPTIONS
   -i, --ignore-case   Case-insensitive substring match.
-  -l, --lang <l>      Force language: js | xml | rust | sql | py | yaml | json5.
+  -l, --lang <l>      Force language: js | xml | html | rust | sql | py | yaml |
+                      json5.
                       Default: detect from the file extension (see tdump.js --help).
   -c, --context       Breadcrumb-only view: print each match's breadcrumb
                       and skip the zoomed text.
@@ -52,15 +54,6 @@ function fail(msg) {
   process.exit(2);
 }
 
-function tokenize(src, lang) {
-  return lang === 'xml' ? new UniLexer().tokenizeXml(src)
-    : lang === 'rust' ? new UniLexer().tokenizeRust(src)
-    : lang === 'sql' ? new UniLexer().tokenizeSql(src)
-    : lang === 'py' ? new UniLexer().tokenizePy(src)
-    : lang === 'yaml' ? new UniLexer().tokenizeYaml(src)
-    : lang === 'json5' ? new UniLexer().tokenizeJson5(src)
-    : new UniLexer().tokenize(src);
-}
 
 function nextSig(u, n, t) {
   for (let i = t; i < n; i++) if (u.classOf(i) !== KLASS.WS && u.classOf(i) !== KLASS.COMMENT) return i;
@@ -101,12 +94,38 @@ function directSiblingLabel(u, n, open, close, names) {
   return null;
 }
 
-// Every enclosing '{'/'[' around token t, innermost first, each carrying
-// its own label: the key it's the value of (JSON/OpenAPI convention), else
-// a "name"/"title" sibling (Postman-collection convention), else null.
+// An element's label (XML/HTML): its tag name, plus '#id' when the open tag
+// carries an id attribute — read off the attribute tokens that follow it.
+function elementLabel(u, n, open) {
+  const name = u.lexemeOf(open);
+  for (let p = open + 1; p < n; p++) {
+    const k = u.classOf(p);
+    if (k === KLASS.TAG || k === KLASS.TEXT) break;                 // next tag / content
+    if (k === KLASS.PUNCT && (u.lexemeOf(p) === '>' || u.lexemeOf(p) === '/>')) break;
+    if (k === KLASS.IDENT && u.lexemeOf(p).toLowerCase() === 'id') {
+      const eq = nextSig(u, n, p + 1);
+      const v = eq === -1 ? -1 : nextSig(u, n, eq + 1);
+      if (v !== -1 && u.lexemeOf(eq) === '=' && u.classOf(v) === KLASS.STRING) return `${name}#${stripQuotes(u.lexemeOf(v))}`;
+    }
+  }
+  return name;
+}
+
+// Every enclosing container around token t, innermost first, each carrying
+// its own label. JSON-shaped '{'/'[': the key it's the value of (JSON/OpenAPI
+// convention), else a "name"/"title" sibling (Postman-collection convention),
+// else null. A name-matched opener ('{' tag byte — an XML/HTML element, a
+// PL/SQL block): always labelled, by its name (plus #id for an element).
 function enclosers(u, n, t) {
   const chain = [];
   for (let i = t - 1; i >= 0; i--) {
+    if (u.classOf(i) === KLASS.TAG) {
+      if (u.tagOf(i) !== 0x7B) continue;                            // openers only
+      const close = u.linkOf(i);
+      if (close === -1 || close < t) continue;
+      chain.push({ open: i, close, label: elementLabel(u, n, i) });
+      continue;
+    }
     if (u.classOf(i) !== KLASS.BRACKET) continue;
     const lex = u.lexemeOf(i);
     if (lex !== '{' && lex !== '[') continue;
@@ -152,19 +171,8 @@ function main() {
   }
 
   let lang = values.lang;
-  if (lang && !['js', 'xml', 'rust', 'sql', 'py', 'yaml', 'json5'].includes(lang)) {
-    fail(`unknown --lang '${lang}' (expected js | xml | rust | sql | py | yaml | json5)`);
-  }
-  if (!lang) {
-    const ext = extname(filePath).toLowerCase();
-    lang = ['.xml', '.html', '.htm', '.svg'].includes(ext) ? 'xml'
-      : ext === '.rs' ? 'rust'
-      : ['.sql', '.pks', '.pkb', '.plsql'].includes(ext) ? 'sql'
-      : ext === '.py' ? 'py'
-      : ['.yaml', '.yml'].includes(ext) ? 'yaml'
-      : ['.json', '.json5', '.jsonc'].includes(ext) ? 'json5'
-      : 'js';
-  }
+  if (lang && !LANGS.includes(lang)) fail(`unknown --lang '${lang}' (expected ${LANGS.join(' | ')})`);
+  if (!lang) lang = langOfPath(filePath) ?? 'js';
 
   let src;
   try { src = readFileSync(filePath, 'utf8'); } catch { fail(`cannot read '${filePath}'`); }
@@ -207,7 +215,15 @@ function main() {
     out.push(`zoomed to ${up === 0 ? 'the nearest labelled ancestor' : rank} ("${unit.label}", tokens ${unit.open}..${unit.close}):`, '');
     const startOff = u.offsetOf(unit.open);
     const endTok = unit.close + 1;
-    const endOff = endTok < n ? u.offsetOf(endTok) : src.length;
+    let endOff = endTok < n ? u.offsetOf(endTok) : src.length;
+    // an XML/HTML close tag with trailing whitespace ('</p >') is several
+    // tokens: run the slice through its '>' (an implied '~' close is
+    // zero-width, so the slice simply ends where the element was ended)
+    const closeOff = u.offsetOf(unit.close);
+    if (u.tagOf(unit.close) === 0x7D && src[closeOff] === '<' && src[endOff - 1] !== '>') {
+      const gt = src.indexOf('>', closeOff);
+      if (gt !== -1) endOff = gt + 1;
+    }
     out.push(src.slice(startOff, endOff));
   }
   process.stdout.write(out.join('\n') + '\n');

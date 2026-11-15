@@ -163,6 +163,54 @@ test('XML: optional end tags are an HTML-only rule', () => {
   assert.deepEqual(r.repairMap().map((f) => f.kind).sort(), ['improper-nesting', 'improper-nesting', 'unclosed-tag', 'unclosed-tag']);
 });
 
+console.log('\n── unilexer HTML mode ──');
+
+const HTML_PAGE = '<!DOCTYPE html>\n<HTML><head><meta charset="utf-8"><title>a<b</title>\n'
+  + '<script>if (a<b && c>d) x="</div>";</script><body><ul id="m"><li>a<li>b <b>c</b></ul>'
+  + '<table><tr><td>1<td>2<tr><td>3</table><p>one<p>two<br><img src="x"/><div>x</div>';
+
+test('HTML: lossless, balanced, same verdict as the structural scanner', () => {
+  const t = L.tokenizeHtml(HTML_PAGE);
+  assert.equal(t.reconstruct(), HTML_PAGE);
+  assert.deepEqual(t.repairMap(), []);
+  assert.deepEqual(new LexicalScanner().scan(HTML_PAGE, HTML_TABLE).repairMap(), []);
+});
+
+test('HTML: implied closes are zero-width ~ tokens linked to their opener', () => {
+  const t = L.tokenizeHtml('<ul><li>a<li>b</ul>');
+  const rows = [];
+  for (let i = 0; i < t.length; i++) if (t.classOf(i) === KLASS.TAG) rows.push(`${t.mnemonicOf(i)}${t.lexemeOf(i)}@${t.offsetOf(i)}→${t.linkOf(i)}`);
+  assert.deepEqual(rows, ['{ul@0→7', '{li@4→3', '~li@9→1', '{li@9→6', '~li@14→4', '}ul@14→0']);
+  for (let i = 0; i < t.length; i++) if (t.tagOf(i) === 0x7E) assert.equal(t.rawOf(i), '', 'implied close must be zero-width');
+});
+
+test('HTML: void elements are complete; names fold to lower case', () => {
+  const s = sig(L.tokenizeHtml('<P>a<BR>b<img src="x"></p>'));
+  assert.deepEqual(s.filter(([m]) => '{}/~'.includes(m)).map(([m, l]) => m + l), ['{p', '/br', '/img', '}p']);
+});
+
+test('HTML: script/style/title content is text, not markup', () => {
+  const s = sig(L.tokenizeHtml('<script>if (a<b) x = "</div>";</script><title>a<b</title>'));
+  assert.deepEqual(s.map(([m]) => m).join(' '), '{ T } { T }');
+});
+
+test('XML mode is unchanged by the HTML rules', () => {
+  const t = L.tokenizeXml('<ul><li>a<li>b</ul><br>');
+  assert.equal(t.repairMap().map((f) => f.kind).sort().join(), 'unclosed-tag,unclosed-tag,unclosed-tag');
+});
+
+test('tfind: HTML breadcrumb names elements and zooms to the innermost', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tfind-'));
+  try {
+    const f = join(dir, 'page.html');
+    writeFileSync(f, '<body><ul id="menu"><li>Home<li>About <b>us</b></ul><p>x</body>');
+    const r = spawnSync(process.execPath, ['tfind.js', 'About', f], { timeout: 5000, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /breadcrumb \(innermost first\): li <- ul#menu <- body/);
+    assert.match(r.stdout, /\n<li>About <b>us<\/b>\n/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 console.log('\n── tools ──');
 
 test('mergeGate: an unterminated string in the merge is not safe', () => {

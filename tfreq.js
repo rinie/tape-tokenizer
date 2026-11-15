@@ -11,23 +11,14 @@
 // table is then a data question, not an intuition.
 
 import { readFileSync, statSync, readdirSync } from 'node:fs';
-import { join, extname, basename } from 'node:path';
+import { join, basename } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { UniLexer, KLASS, KLASS_NAME } from './unilexer.js';
+import { KLASS, KLASS_NAME, langOfPath, tokenizeAs } from './unilexer.js';
 import { OP_LITERAL } from './token-tags.js';
 
 const VERSION = '0.1.0';
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.svn', '.hg', 'dist', 'build']);
-const EXT_LANG = {
-  '.js': 'js', '.mjs': 'js', '.cjs': 'js', '.jsx': 'js',
-  '.xml': 'xml', '.html': 'xml', '.htm': 'xml', '.svg': 'xml',
-  '.rs': 'rust',
-  '.sql': 'sql', '.pks': 'sql', '.pkb': 'sql', '.plsql': 'sql',
-  '.py': 'py',
-  '.yaml': 'yaml', '.yml': 'yaml',
-  '.json': 'json5', '.json5': 'json5', '.jsonc': 'json5',
-};
 
 const HELP = `tape-tokenizer tfreq — token frequencies for byte-allocation tuning (v${VERSION})
 
@@ -35,7 +26,7 @@ USAGE
   node tfreq.js [options] <path...>
 
   Walks the given files/directories (recursively), lexes each by extension
-  (js/json5/xml/rust/sql/py/yaml), and reports aggregate frequencies:
+  (js/json5/xml/html/rust/sql/py/yaml), and reports aggregate frequencies:
 
     - tokens per CLASS (ws, ident, keyword, op, …)
     - operators per ROLE (grouped by tag byte; dialect spellings listed),
@@ -86,18 +77,11 @@ function analyze(files) {
   let files_ = 0; let tokens = 0; let bytes = 0;
 
   for (const path of files) {
-    const lang = EXT_LANG[extname(path).toLowerCase()];
+    const lang = langOfPath(path);
     if (!lang) continue;
     let src;
     try { src = readFileSync(path, 'utf8'); } catch { continue; }
-    const lx = new UniLexer();
-    const u = lang === 'xml' ? lx.tokenizeXml(src)
-      : lang === 'rust' ? lx.tokenizeRust(src)
-      : lang === 'sql' ? lx.tokenizeSql(src)
-      : lang === 'py' ? lx.tokenizePy(src)
-      : lang === 'yaml' ? lx.tokenizeYaml(src)
-      : lang === 'json5' ? lx.tokenizeJson5(src)
-      : lx.tokenize(src);
+    const u = tokenizeAs(src, lang);
     files_++; tokens += u.length; bytes += src.length;
 
     for (let t = 0; t < u.length; t++) {

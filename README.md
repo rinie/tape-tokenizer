@@ -78,7 +78,7 @@ tfind.js             zoom into a tape by CONTENT, not depth: breadcrumb of
                      too big to peel --outline layer by layer
 unilexer.js          ONE lexer, ONE tape: value pools + structural links in a
                      single pass; tag byte IS the mnemonic
-                     (JS, XML, Rust, Oracle SQL/PLSQL, Python, YAML,
+                     (JS, XML, HTML, Rust, Oracle SQL/PLSQL, Python, YAML,
                      JSON5 [also accepts plain JSON] — Python/YAML via the
                      indentation bracket family :{ }: )
 valuetape.js         §13b spike (historical; superseded by unilexer.js)
