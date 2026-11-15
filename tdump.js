@@ -230,7 +230,13 @@ function clikeLabel(u, t, unmatched) {
     if (tag === 0x7E) return '~';
     if (tag === 0x7D) return unmatched ? `} ${lex}` : '}';   // an orphan close keeps its name
   }
-  if (u.classOf(t) === KLASS.TEXT) return JSON.stringify(lex.length > 60 ? lex.slice(0, 60) + '…' : lex);
+  if (u.classOf(t) === KLASS.TEXT) {
+    // trailing source indentation (a line break plus the next line's indent,
+    // kept by text before an omitted end tag) is layout, not content: drop
+    // it. A trailing space on the same line ("Intro with ") stays.
+    const txt = lex.replace(/\s*[\r\n]\s*$/, '');
+    return JSON.stringify(txt.length > 60 ? txt.slice(0, 60) + '…' : txt);
+  }
   return outlineLabel(u, t);
 }
 

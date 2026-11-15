@@ -333,6 +333,10 @@ test('tdump --outline --clike: name before the brace, bare close', () => {
     ['ul {', '  li ~', '    "a"', '    br;', '    "b"', '  ~', '}']);
   assert.deepEqual(body(outlineView('<ul><li>a<li>b</ul>', 'html', 2, { clike: true })),
     ['ul {', '  li ~ … 1 … ~', '  li ~ … 1 … ~', '}']);
+  // trailing line break + indent is layout and is dropped; a same-line
+  // trailing space is content and stays
+  assert.deepEqual(body(outlineView('<p>a <b>b</b>\n<p>c\n  </p>', 'html', 3, { clike: true })),
+    ['p ~', '  "a "', '  b {', '    "b"', '  }', '~', 'p {', '  "c"', '}']);
   // other languages are unchanged
   assert.equal(outlineView('{"a": [1]}', 'json5', 3, { clike: true }), outlineView('{"a": [1]}', 'json5', 3));
   const r = spawnSync(process.execPath, ['tdump.js', '--clike', 'samples/sample.xml'], { encoding: 'utf8' });

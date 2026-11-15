@@ -18,7 +18,15 @@ regression suite (#50), and the **HTML wave** (#51–#57: optional end tags,
 HTML mode in unilexer, content-based ends, attribute-free outlines, and a
 sample page that exercises all of it).
 
-## Unreleased — --clike: braces match
+## Unreleased — --clike: trailing layout whitespace trimmed
+
+- Text that runs up to an omitted end tag keeps the line break and the next
+  line's indentation (`"Amount\n    "`) — right for the tape, noise in the
+  C-like view. `--clike` now drops a trailing whitespace run that contains a
+  line break; a same-line trailing space (`"Intro with "`) is content and
+  stays. The tape and the default outline are unchanged.
+
+## PR #60 — --clike: braces match · 2026-11-15
 
 - In #59's layout an element whose HTML end tag was omitted opened with `{`
   and closed with `~` (`li {` … `~`), so the `{` had no `}`. It now opens
