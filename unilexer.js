@@ -643,6 +643,7 @@ class UniLexer {
     const voids = html ? HTML_TABLE.voidElements : null;
     const optEnd = html ? HTML_TABLE.optionalEnd : null;
     const rawText = html ? HTML_TABLE.rawTextElements : null;
+    const phrasing = html ? HTML_TABLE.phrasingElements : null;
 
     const stack = [];   // open tags: { idx, name }
     let depth = 0;
@@ -657,15 +658,16 @@ class UniLexer {
       link(entry.idx, idx);
     };
     // A start tag ends the optional-end elements it may legally follow —
-    // searched only through the run of optional-end elements on top of the
-    // stack (same rule as lexical-scanner's _scanXml).
+    // searched through the optional-end and inline (phrasing) elements on top
+    // of the stack, so <p><b>x<div> ends the <b> and the <p> (same rule as
+    // lexical-scanner's _scanXml, which also reports the inline one).
     const impliedByStart = (name, at) => {
       if (!optEnd) return;
       let target = -1;
       for (let s = stack.length - 1; s >= 0; s--) {
         const closers = optEnd.get(stack[s].name);
-        if (!closers) break;
-        if (closers.has(name)) target = s;
+        if (closers) { if (closers.has(name)) target = s; continue; }
+        if (!phrasing.has(stack[s].name)) break;
       }
       while (target !== -1 && stack.length > target) impliedClose(stack.pop(), at);
     };
