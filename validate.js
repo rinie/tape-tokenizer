@@ -12,7 +12,7 @@
 // Languages: js | c | py | xml
 
 import { readFileSync } from 'fs';
-import { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE } from './lexical-scanner.js';
+import { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE, HTML_TABLE } from './lexical-scanner.js';
 
 const TABLES = { js: JS_TABLE, c: C_TABLE, py: PYTHON_TABLE, xml: XML_TABLE };
 
@@ -113,6 +113,9 @@ function main() {
   report(validateFile('samples/sample.py', PYTHON_TABLE), 'own');
   console.log('\nXML_TABLE vs a real XML fragment:');
   report(validateFile('samples/sample.xml', XML_TABLE), 'lib');
+  console.log('\nHTML_TABLE vs an HTML page that omits every optional end tag');
+  console.log('(one deliberate seam: an unclosed <b>):');
+  report(validateFile('samples/sample.html', HTML_TABLE), 'lib');
 }
 
 main();

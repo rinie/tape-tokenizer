@@ -17,7 +17,8 @@ Run the validation yourself: `node validate.js`
 - `validate.js` — runs a table over real files and reports balance + findings,
   each with a 1-based line (human-facing) and both boundaries where known.
 - `samples/sample.py`, `samples/sample.xml` — real, valid files used as a
-  known-good corpus.
+  known-good corpus. `samples/sample.html` exercises the HTML rules, with one
+  deliberate seam.
 
 ## Validation results
 
@@ -26,6 +27,7 @@ Run the validation yourself: `node validate.js`
 | The repo's own 8 `.js` files | `JS_TABLE` | ✓ all balanced |
 | `samples/sample.py` (docstrings, f-strings, dicts, comments with brackets) | `PYTHON_TABLE` | ✓ balanced |
 | `samples/sample.xml` (PI, comment, entities, `>` inside an attribute) | `XML_TABLE` | ✓ balanced |
+| `samples/sample.html` (every optional end tag omitted, markup-looking text in `<title>`/`<style>`/`<script>`, void elements) | `HTML_TABLE` | ⚠ 1 deliberate seam: an unclosed `<b>` |
 
 ## Holes found — recorded, not hidden
 
