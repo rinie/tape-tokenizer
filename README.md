@@ -2,7 +2,7 @@
 
 A **tolerant, positional, structural tape scanner** for source code — and the
 flat-tape tokenizer it grew out of. It walks source as a byte stream and records
-the `(){}[]` structure (plus XML tags and C preprocessor conditionals) onto a
+the `(){}[]` structure (plus XML/HTML tags and C preprocessor conditionals) onto a
 single flat tape, **never faulting**: imbalance is reported as a *value* (a
 repair map with both boundaries), not thrown as an error.
 
@@ -17,6 +17,10 @@ grammared into an AST.
   inside strings/comments/regex. Unbalanced input never throws — it surfaces as
   findings (unmatched, orphan, crossing, unterminated), each with its source
   offset(s).
+- **HTML as written, not as validated.** End tags the spec lets authors omit
+  (`<p>`, `<li>`, `<td>`, `<head>`, …) are closed implicitly by zero-width `~`
+  tokens, void elements need no close, and `<script>`/`<style>` hold text.
+  Only an end tag that was really required is reported.
 - **Per-language lexical tables.** JS, C, Python, XML, HTML. The scanner is
   language-agnostic; the swappable table is the only thing that changes. Tables
   can be **harvested** from real TextMate grammars (`harvest.js`).
@@ -46,12 +50,18 @@ node tdump.js --outline 2 spec.json :: folded breadth-first view, any of the 7 m
 node tdump.js --outline 2 "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"
                                 :: a real 3.4MB/46k-token Postman collection, still
                                 :: readable: top level folds to info/item/auth/event
+node tdump.js --outline 3 samples\sample.html
+                                :: HTML element tree; ~ marks an omitted end tag,
+                                :: attributes are hidden
 node tfreq.js src\              :: token/operator-role frequencies over a tree
 node tfind.js -u 2 "PRINT?rawJob=true" "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"
                                 :: zoom by CONTENT instead of depth — breadcrumb of
                                 :: enclosing containers, then the request the match
                                 :: belongs to in full (--up widens past a narrow
                                 :: nearest ancestor; drop it to see the breadcrumb first)
+node tfind.js 25.50 samples\sample.html
+                                :: in HTML the breadcrumb is the enclosing elements
+                                :: (td <- tr <- tbody <- table#orders <- body <- html)
 node scan.js --help             :: full usage
 ```
 
@@ -64,7 +74,8 @@ convention).
 scan.js              CLI front end (extension detection, recursive walk, policy)
 validate.js          batch validator + built-in self-test suite
 test.js              regression assertions (unilexer languages + tools)
-lexical-scanner.js   the structural scanner + the lexical tables (JS/C/PY/XML)
+lexical-scanner.js   the structural scanner + the lexical tables
+                     (JS/C/PY/XML/HTML; unilexer imports HTML_TABLE)
 bracket-scanner.js   milestone-1 reference: bracket-only scanner
 harvest.js           derive a lexical table from a *.tmLanguage.json grammar
 defuse.js            breadth-first def/use projection (rides unilexer.js)
@@ -74,8 +85,9 @@ tfreq.js             token frequencies (class / op-role / keyword) for tuning
                      the byte allocation — the data the 13e rule consumes
 tfind.js             zoom into a tape by CONTENT, not depth: breadcrumb of
                      enclosing containers + the nearest named/keyed
-                     ancestor in full — for finding one thing in a spec
-                     too big to peel --outline layer by layer
+                     ancestor (or, in XML/HTML, element) in full — for
+                     finding one thing in a spec too big to peel
+                     --outline layer by layer
 unilexer.js          ONE lexer, ONE tape: value pools + structural links in a
                      single pass; tag byte IS the mnemonic
                      (JS, XML, HTML, Rust, Oracle SQL/PLSQL, Python, YAML,
