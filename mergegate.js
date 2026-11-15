@@ -40,14 +40,19 @@ function splitConflict(src) {
   return { ours: ours.join('\n'), theirs: theirs.join('\n'), hadConflict };
 }
 
-// Structural seam signature of one version: the warning-severity findings,
-// counted by kind, plus whether the version closes within itself.
+// Structural signature of one version: every finding — warning-class seams AND
+// error-class malformations (an unterminated string / comment) — counted by
+// kind, plus whether the version closes within itself. Errors must count: an
+// unterminated token can HIDE seams (a block comment running to EOF stops the
+// scan), so comparing seams alone would pass a merge that broke the file.
 function seamSignature(src, table) {
   const r = new LexicalScanner().scan(src, table);
-  const seams = r.seams();
+  const findings = r.repairMap();
+  const seams = findings.filter((f) => f.severity === 'warning');
+  const errors = findings.filter((f) => f.severity === 'error');
   const byKind = {};
-  for (const s of seams) byKind[s.kind] = (byKind[s.kind] || 0) + 1;
-  return { seams, byKind, selfContained: r.selfContained(), count: seams.length };
+  for (const s of findings) byKind[s.kind] = (byKind[s.kind] || 0) + 1;
+  return { seams, errors, byKind, selfContained: r.selfContained(), count: seams.length };
 }
 
 // Validate a resolution against its parents.

@@ -1,0 +1,14 @@
+{
+  "name": "tape-tokenizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tolerant, positional, structural tape scanner for source code",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node validate.js && node test.js"
+  }
+}

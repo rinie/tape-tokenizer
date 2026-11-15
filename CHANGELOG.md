@@ -14,6 +14,37 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — review fixes: lexer edge cases, tool hangs, a test suite
+
+- Setback, found in a code review: `unilexer.js` had no assertions at all —
+  `validate.js` only exercised `lexical-scanner.js`, and the demos print but
+  never check. Every bug below passed the existing suite. New `test.js` (20
+  regression assertions, wired into `npm test` via a new `package.json`)
+  fails on each of them against the old code.
+- `tfind` looped forever on a malformed object (`{"k": }`, `[{ "k" }]`): a
+  closer in value position linked backward and the key walk restarted.
+- unilexer: `/*/` closed the block comment it opened (JS/Rust/JSON5 and SQL);
+  JS `#private` names and the `#!` hashbang were tagged with the COMMENT byte;
+  a UTF-8 BOM glued onto the first identifier; `1e`-without-digits was read
+  as an exponent and the BigInt `n` suffix was accepted in every language.
+- Python: a bracket closing mid-line left stale line-start state (`) + 1`
+  opened a phantom indent level), and `\` line continuation was ignored;
+  `//=` is now one operator.
+- YAML: an apostrophe inside a plain scalar (`don't`) opened a quoted string
+  that swallowed the following lines; `#` opened a comment mid-word; hex
+  numbers were tagged as floats.
+- `mergeGate` compared warning-class seams only, so a merge that left a
+  string or block comment unterminated was judged safe. Errors count now.
+- `sfdiff` / `defuse` took nested `function` declarations (inside an arrow
+  body or IIFE) for top-level units. Depth 0 only now. `sfdiff.js` also lost
+  its literal NUL/SOH bytes (now `\u0000` escapes) — git had treated the
+  file as binary.
+- `scan.js`: `.html`/`.htm` get an HTML table (case-insensitive names, void
+  elements like `<br>`/`<img>` complete on their own); XML improper nesting is
+  reported once per open tag instead of once per later close; a bare `<` in
+  text no longer swallows the next tag; `*`/`?` in the last path segment are
+  expanded by the tool itself, so the README's `kernel\*.c` works from cmd.
+
 ## Unreleased — XML: DOCTYPE internal subset stays one declaration (#48)
 
 - Setback, found by comparing against another XML viewer: a

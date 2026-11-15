@@ -34,8 +34,8 @@ OPTIONS
   -i, --ignore-case   Case-insensitive substring match.
   -l, --lang <l>      Force language: js | xml | rust | sql | py | yaml | json5.
                       Default: detect from the file extension (see tdump.js --help).
-  -c, --context       Also print the breadcrumb-only view (no zoomed text),
-                      one line per ancestor level, innermost first.
+  -c, --context       Breadcrumb-only view: print each match's breadcrumb
+                      and skip the zoomed text.
   -u, --up <n>        Zoom to the (n+1)-th labelled ancestor instead of the
                       nearest one (n >= 0, default 0) — raise it when the
                       nearest label is too narrow (e.g. zoom out from one
@@ -84,12 +84,17 @@ function directSiblingLabel(u, n, open, close, names) {
     const keyTok = t;
     const key = stripQuotes(u.lexemeOf(keyTok));
     let valTok = nextSig(u, n, keyTok + 1); // ':'
+    if (valTok === -1 || valTok >= close) break;
     valTok = nextSig(u, n, valTok + 1);     // value start
+    if (valTok === -1 || valTok >= close) break;
     if (names.includes(key) && u.classOf(valTok) === KLASS.STRING) {
       return stripQuotes(u.lexemeOf(valTok));
     }
     let valEnd = valTok;
     if (u.classOf(valTok) === KLASS.BRACKET) valEnd = u.linkOf(valTok);
+    // malformed input (a closer in value position, an unmatched opener): the
+    // link is -1 or points BACKWARD — never step back, or the walk loops
+    if (valEnd < valTok) break;
     t = nextSig(u, n, valEnd + 1);
     if (t !== -1 && u.lexemeOf(t) === ',') t = nextSig(u, n, t + 1);
   }
