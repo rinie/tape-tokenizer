@@ -14,6 +14,7 @@ import { LexicalScanner, XML_TABLE, HTML_TABLE, JS_TABLE } from './lexical-scann
 import { mergeGate } from './mergegate.js';
 import { topLevelUnits } from './sfdiff.js';
 import { analyze } from './defuse.js';
+import { outlineView } from './tdump.js';
 
 const L = new UniLexer();
 let failed = 0;
@@ -301,6 +302,18 @@ test('tfind: malformed objects terminate (no infinite loop)', () => {
       assert.equal(r.status, 0, `${body}: exit ${r.status}`);
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('tdump --outline: XML/HTML attributes are hidden, the element tree stays', () => {
+  const xml = `<a x="1"><b y="2"/><c/><d z=3 w='4'>t</d></a>`;
+  const body = (out) => out.split('\n').slice(1);    // drop the header line
+  assert.deepEqual(body(outlineView(xml, 'xml', 3)),
+    ['{ a', '  / b', '  / c', '  { d', '    T t', '  } d', '} a']);
+  const html = '<ul id="m" class=x><li><a href="/">Home</a><li><img src="i.png" alt="">x</ul>';
+  assert.deepEqual(body(outlineView(html, 'html', 3)),
+    ['{ ul', '  { li', '    { a … 1 … } a', '  ~ li', '  { li', '    / img', '    T x', '  ~ li', '} ul']);
+  // other languages are untouched: a JSON key is not an attribute
+  assert.match(outlineView('{"a": 1}', 'json5', 2), /" "a"/);
 });
 
 console.log(`\n── ${passed} passed, ${failed} failed ──`);

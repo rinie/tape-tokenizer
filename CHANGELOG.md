@@ -14,6 +14,19 @@ the subforest diff), and the **consolidation + encoding wave** (#20–#25: one
 lexer/one tape, the RATFOR projection principle, and the byte-encoding rule —
 direct bytes for closed vocabularies, indirection only for real variation).
 
+## Unreleased — tdump --outline hides XML/HTML attributes
+
+- In XML/HTML, `--outline` printed every attribute as three rows under its
+  tag (`I lang`, `=`, `" "en"`), which buried the element tree. The outline
+  now skips a start tag's attributes up to its `>` or `/>`. They stay on the
+  tape, and the dump modes (`--brief`, `--signal`, `--full`) still show them.
+- An element closed by `/>` after attributes (`<b y="2"/>`) printed as
+  `{ b` with no close, because the `/>` was dropped as punctuation. It is now
+  one `/ b` line, the same as an attribute-free `<c/>`.
+- A folded element's count (`{ book … 12 … }`) now counts only its content,
+  not its attributes.
+- Other languages are unchanged.
+
 ## Unreleased — HTML: `<head>` and `<colgroup>` end at content they can't hold
 
 - `<head><title>t</title><div>` left the `<div>` inside `<head>`. Only
