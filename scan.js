@@ -67,7 +67,8 @@ LANGUAGE DETECTION (by extension)
   .js .mjs .cjs .jsx     -> js
   .py                    -> py
   .xml .svg              -> xml
-  .html .htm             -> html  (xml, case-insensitive names, void elements)
+  .html .htm             -> html  (xml, case-insensitive names, void elements,
+                                   optional end tags like </p> </li> </td>)
   (other extensions are skipped unless --lang forces a language)
 
 EXIT STATUS

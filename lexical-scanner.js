@@ -53,6 +53,7 @@ const X_CLOSE = 0x3E;  // >  element close tag
 const X_SELF  = 0x2F;  // /  self-closing tag
 const X_COMM  = 0x23;  // #  comment
 const X_DECL  = 0x21;  // !  declaration / processing-instruction / CDATA
+const X_IMPLIED = 0x7E; // ~  implied close (HTML optional end tag) — zero-width
 
 // ── preprocessor-conditional projection chars (the SECOND, line-based family) ──
 // The cpp conditionals are bracket-ROLE tokens, but they must not overload the
@@ -487,6 +488,25 @@ class LexicalScanner {
     // never take a close tag — they are complete on their own, like '<br/>'.
     const voids = table.voidElements || null;
     const fold = table.caseInsensitive ? (s) => s.toLowerCase() : (s) => s;
+    const optEnd = table.optionalEnd || null;   // name → Set of start tags that end it
+    const isOptional = (e) => !!optEnd && optEnd.has(this._internNames[e.nameId]);
+
+    // HTML optional end tags (<p>, <li>, <td>, …): a start tag may END open
+    // elements whose close tag the author was allowed to leave out. Walk down
+    // the run of optional-end elements on top of the stack (a required-end
+    // element like <ul> or <div> bounds the scope — a nested list's <li> must
+    // not close the outer one) and close everything down to the deepest one
+    // this start tag ends.
+    const impliedByStart = (name, offset) => {
+      if (!optEnd) return;
+      let target = -1;
+      for (let s = stack.length - 1; s >= 0; s--) {
+        const closers = optEnd.get(this._internNames[stack[s].nameId]);
+        if (!closers) break;
+        if (closers.has(name)) target = s;
+      }
+      while (target !== -1 && stack.length > target) this._impliedClose(stack.pop(), offset);
+    };
 
     let i = 0;
     scanLoop:
@@ -534,8 +554,9 @@ class LexicalScanner {
       const r = this._skipTag(src, i);
       if (r.unterminated) { this._stopUnterminated('unterminated-tag', '<', start); break scanLoop; }
 
+      if (!isClose) impliedByStart(name, start);   // e.g. <li> ends an open <li>
       if (isClose) {
-        this._closeXmlTag(name, start, stack);
+        this._closeXmlTag(name, start, stack, isOptional);
       } else if (r.selfClosing || (voids && voids.has(name))) {
         // self-closing (or an HTML void element) — matched, zero span
         const idx = this._emit(X_SELF, start, stack.length, this._intern(name));
@@ -548,7 +569,26 @@ class LexicalScanner {
       i = r.end;
     }
 
+    // End of input ends every optional-end element still open (</body>,
+    // </html>, a trailing </li> …). Not after a hard stop: the tail is inside
+    // an unterminated token, and we never fabricate structure for it.
+    if (optEnd && !this._unterminated) {
+      for (let s = stack.length - 1; s >= 0; s--) {
+        if (isOptional(stack[s])) this._impliedClose(stack.splice(s, 1)[0], len);
+      }
+    }
+
     return this._buildResult();
+  }
+
+  // Record the end of an element whose close tag was legitimately omitted
+  // (HTML optional end tags). The token is ZERO-WIDTH at the offset of what
+  // ended it and has its own projection char '~', so the tape never claims a
+  // '</name>' that is not in the source — but it is linked like any close.
+  _impliedClose(entry, offset) {
+    const idx = this._emit(X_IMPLIED, offset, this._depthArr[entry.idx], entry.nameId);
+    this._jumpArr[entry.idx] = idx;
+    this._jumpArr[idx]       = entry.idx;
   }
 
   // Skip from '<' to the matching '>', honoring quoted attribute values that may
@@ -576,7 +616,7 @@ class LexicalScanner {
 
   // Tolerant close: match the NEAREST open tag of the same name, even if it is
   // not on top of the stack (improper nesting). Report skipped-over opens.
-  _closeXmlTag(name, offset, stack) {
+  _closeXmlTag(name, offset, stack, isOptional = () => false) {
     const nameId = this._internMap.has(name) ? this._internMap.get(name) : -1;
 
     let found = -1;
@@ -594,8 +634,14 @@ class LexicalScanner {
     const openEntry = stack[found];
     // any tags above the matched open were left unclosed → improper nesting.
     // Reported ONCE per open tag (it stays on the stack, and every later close
-    // that reaches past it would otherwise report it again).
+    // that reaches past it would otherwise report it again). Exception: an
+    // HTML optional-end element (<li> before </ul>) is legitimately ended
+    // here — closed implicitly, not reported.
     for (let s = stack.length - 1; s > found; s--) {
+      if (isOptional(stack[s])) {
+        this._impliedClose(stack.splice(s, 1)[0], offset);
+        continue;
+      }
       if (stack[s].reported) continue;
       stack[s].reported = true;
       this._findings.push({
@@ -608,7 +654,9 @@ class LexicalScanner {
         note: `still open when </${name}> closed`,
       });
     }
-    stack.splice(found, 1);   // remove just the matched open; leave the rest open
+    // remove just the matched open (its index is unchanged: only entries above
+    // it were spliced); leave the rest open
+    stack.splice(found, 1);
 
     const depth = this._depthArr[openEntry.idx];
     const idx = this._emit(X_CLOSE, offset, depth, openEntry.nameId);
@@ -844,14 +892,50 @@ const PYTHON_TABLE = {
 
 const XML_TABLE = { mode: 'xml' };
 
-// HTML rides the XML scanner with two relaxations: tag names fold to lower
-// case, and the void elements are complete without a close tag. (Optional
-// end tags — an unclosed <p> or <li> — are still reported as seams.)
+// HTML rides the XML scanner with three relaxations: tag names fold to lower
+// case, the void elements are complete without a close tag, and the elements
+// with OPTIONAL end tags are ended implicitly — by a start tag that the spec
+// says ends them, by their parent's close tag, or by end of input. Each such
+// end is a zero-width '~' token on the tape, never reported as a seam.
+//
+// The rules are the WHATWG "optional tags" section, linter-grade: a start tag
+// only ends elements in the run of optional-end elements on top of the stack
+// (no full "scope" algorithm), and the content-based rules (a <colgroup> ended
+// by any non-<col> content, <head> by body content) are left out.
+const P_CLOSERS = ['address', 'article', 'aside', 'blockquote', 'center', 'details',
+  'dialog', 'dir', 'div', 'dl', 'fieldset', 'figcaption', 'figure', 'footer', 'form',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'hgroup', 'hr', 'li', 'dd', 'dt',
+  'listing', 'main', 'menu', 'nav', 'ol', 'p', 'pre', 'search', 'section', 'summary',
+  'table', 'ul', 'xmp'];
+const TABLE_SECTIONS = ['thead', 'tbody', 'tfoot'];
 const HTML_TABLE = {
   mode: 'xml',
   caseInsensitive: true,
   voidElements: new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
     'link', 'meta', 'param', 'source', 'track', 'wbr']),
+  // element → the start tags that end it (an empty set: ended only by its
+  // parent's close tag or end of input)
+  optionalEnd: new Map(Object.entries({
+    html:     [],
+    head:     ['body'],
+    body:     [],
+    p:        P_CLOSERS,
+    li:       ['li'],
+    dt:       ['dt', 'dd'],
+    dd:       ['dt', 'dd'],
+    rt:       ['rt', 'rp'],
+    rp:       ['rt', 'rp'],
+    optgroup: ['optgroup'],
+    option:   ['option', 'optgroup'],
+    colgroup: ['colgroup', 'caption', 'tr', 'td', 'th', ...TABLE_SECTIONS],
+    caption:  ['colgroup', 'caption', 'tr', 'td', 'th', ...TABLE_SECTIONS],
+    thead:    ['tbody', 'tfoot'],
+    tbody:    ['tbody', 'tfoot'],
+    tfoot:    [],
+    tr:       ['tr', ...TABLE_SECTIONS],
+    td:       ['td', 'th', 'tr', ...TABLE_SECTIONS],
+    th:       ['td', 'th', 'tr', ...TABLE_SECTIONS],
+  }).map(([k, v]) => [k, new Set(v)])),
 };
 
 export { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE, HTML_TABLE };

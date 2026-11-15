@@ -124,6 +124,45 @@ test('HTML: void elements and upper-case names balance', () => {
   assert.equal(new LexicalScanner().scan(src, HTML_TABLE).repairMap().length, 0);
 });
 
+const htmlFindings = (src) => new LexicalScanner().scan(src, HTML_TABLE).repairMap().map((f) => `${f.kind}:${f.char}`);
+
+test('HTML: optional end tags (li, p, dt/dd, option) are implied, not seams', () => {
+  assert.deepEqual(htmlFindings('<ul><li>a<li>b<ul><li>c<li>d</ul><li>e</ul>'), []);
+  assert.deepEqual(htmlFindings('<body><p>one<p>two<div>x</div><p>three<hr><p>four</body>'), []);
+  assert.deepEqual(htmlFindings('<dl><dt>a<dd>b<dt>c<dd>d</dl>'), []);
+  assert.deepEqual(htmlFindings('<select><optgroup label=x><option>1<option>2<optgroup label=y><option>3</select>'), []);
+});
+
+test('HTML: table sections, rows and cells close implicitly', () => {
+  assert.deepEqual(htmlFindings('<table><thead><tr><th>A<th>B<tbody><tr><td>1<td>2<tr><td>3</table>'), []);
+});
+
+test('HTML: end of input closes html/head/body/p', () => {
+  const r = new LexicalScanner().scan('<!DOCTYPE html><html><head><title>t</title><body><p>hi', HTML_TABLE);
+  assert.equal(r.repairMap().length, 0);
+  const implied = [...r.tags].map((t, i) => (t === 0x7E ? r.nameOf(i) : null)).filter(Boolean);
+  assert.deepEqual(implied, ['head', 'p', 'body', 'html']);
+});
+
+test('HTML: a nested list item does not close the outer one', () => {
+  const r = new LexicalScanner().scan('<ul><li>a<ul><li>b</ul></ul>', HTML_TABLE);
+  const outerLi = 1;
+  assert.equal(r.nameOf(outerLi), 'li');
+  assert.equal(r.nameOf(r.jumps[outerLi]), 'li');
+  assert.ok(r.offsets[r.jumps[outerLi]] > r.src.indexOf('</ul>'), 'outer li must close at the outer </ul>');
+});
+
+test('HTML: required end tags are still reported', () => {
+  assert.deepEqual(htmlFindings('<div><b>x</div>'), ['improper-nesting:b', 'unclosed-tag:b']);
+  assert.deepEqual(htmlFindings('<p>a</p></p>'), ['orphan-close-tag:p']);
+  assert.deepEqual(htmlFindings('<div><p>a'), ['unclosed-tag:div']);
+});
+
+test('XML: optional end tags are an HTML-only rule', () => {
+  const r = new LexicalScanner().scan('<ul><li>a<li>b</ul>', XML_TABLE);
+  assert.deepEqual(r.repairMap().map((f) => f.kind).sort(), ['improper-nesting', 'improper-nesting', 'unclosed-tag', 'unclosed-tag']);
+});
+
 console.log('\n── tools ──');
 
 test('mergeGate: an unterminated string in the merge is not safe', () => {
