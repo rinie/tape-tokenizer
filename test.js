@@ -320,6 +320,11 @@ test('samples/sample.html: one deliberate seam, every optional end implied', () 
   const t = L.tokenizeHtml(src);
   assert.equal(t.reconstruct(), src);
   assert.deepEqual(t.repairMap(), []);
+  // --clike decodes &amp; in text; the <script> && stays raw
+  const text = outlineView(src, 'html', 99, { clike: true }).split('\n').map((l) => l.trim()).filter((l) => l.startsWith('"'));
+  for (const s of ['"Orders & returns"', '"Amount & VAT"', '"Done & dusted"']) assert.ok(text.includes(s), s);
+  assert.ok(text.some((l) => l.startsWith('"if (a < b && c > d)')));
+  assert.ok(!text.some((l) => l.includes('&amp;')));
 });
 
 test('tdump --outline --clike: name before the brace, bare close', () => {

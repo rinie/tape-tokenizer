@@ -20,6 +20,14 @@ sample page that exercises all of it), a docs sync (#58), and the **C-like
 outline** (#59–#62: `tdump --clike`, matching `~` for omitted end tags, text
 without layout whitespace and with character references decoded).
 
+## Unreleased — samples/sample.html: &amp; entities
+
+- The sample page now escapes `&` as `&amp;` in a link's text and `href`,
+  a table header and the closing paragraph, so `tdump --outline 99 --clike`
+  shows #62's decoding on HTML too (`"Orders & returns"`, `"Amount & VAT"`,
+  `"Done & dusted"`); the `<script>`'s `&&` stays raw. The sample test
+  checks both. Structure, verdict and implied list are unchanged.
+
 ## PR #62 — --clike: character references decoded · 2026-11-16
 
 - `--clike` text now shows what it says, not how it was escaped:
