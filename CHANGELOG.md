@@ -16,9 +16,11 @@ direct bytes for closed vocabularies, indirection only for real variation).
 Then content search (#45–#47: `tfind.js`), a review pass with the first
 regression suite (#50), and the **HTML wave** (#51–#57: optional end tags,
 HTML mode in unilexer, content-based ends, attribute-free outlines, and a
-sample page that exercises all of it).
+sample page that exercises all of it), a docs sync (#58), and the **C-like
+outline** (#59–#62: `tdump --clike`, matching `~` for omitted end tags, text
+without layout whitespace and with character references decoded).
 
-## Unreleased — --clike: character references decoded
+## PR #62 — --clike: character references decoded · 2026-11-16
 
 - `--clike` text now shows what it says, not how it was escaped:
   `"XML &amp; the art of &gt; brackets"` reads `"XML & the art of > brackets"`.
