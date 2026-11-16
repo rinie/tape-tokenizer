@@ -2,8 +2,9 @@
 <!-- HTML_TABLE sample: every end tag the spec lets an author omit is
      omitted (head, li, p, colgroup, thead/tbody, tr, td/th, dt/dd, body,
      html); <title>/<style>/<script> hold markup-looking text; void elements
-     have no close. One seam is deliberate: the <b> in the intro paragraph
-     is never closed, and its end tag is NOT optional. -->
+     have no close; text and an attribute escape & as &amp; (the <script>
+     && is code and stays raw). One seam is deliberate: the <b> in the intro
+     paragraph is never closed, and its end tag is NOT optional. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -13,15 +14,15 @@
 <body>
   <nav id="menu"><ul>
     <li><a href="/">Home</a>
-    <li><a href="/orders">Orders</a>
+    <li><a href="/orders?sort=id&amp;dir=asc">Orders &amp; returns</a>
   </ul></nav>
   <p>Intro with <b>bold <div class="note">a note</div>
   <table id="orders">
     <colgroup><col><col class="amt">
-    <thead><tr><th>Id<th>Amount
+    <thead><tr><th>Id<th>Amount &amp; VAT
     <tbody>
       <tr><td>1<td>10.00
       <tr><td>2<td>25.50
   </table>
   <dl><dt>Total<dd>35.50</dl>
-  <p>Done<br>bye
+  <p>Done &amp; dusted<br>bye

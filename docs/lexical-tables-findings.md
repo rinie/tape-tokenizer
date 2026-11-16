@@ -27,7 +27,7 @@ Run the validation yourself: `node validate.js`
 | The repo's own 8 `.js` files | `JS_TABLE` | ✓ all balanced |
 | `samples/sample.py` (docstrings, f-strings, dicts, comments with brackets) | `PYTHON_TABLE` | ✓ balanced |
 | `samples/sample.xml` (PI, comment, entities, `>` inside an attribute) | `XML_TABLE` | ✓ balanced |
-| `samples/sample.html` (every optional end tag omitted, markup-looking text in `<title>`/`<style>`/`<script>`, void elements) | `HTML_TABLE` | ⚠ 1 deliberate seam: an unclosed `<b>` |
+| `samples/sample.html` (every optional end tag omitted, markup-looking text in `<title>`/`<style>`/`<script>`, void elements, `&amp;` in text and an attribute) | `HTML_TABLE` | ⚠ 1 deliberate seam: an unclosed `<b>` |
 
 ## Holes found — recorded, not hidden
 
