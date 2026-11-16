@@ -58,7 +58,10 @@ OPTIONS
                    before the brace and a bare close (book { … }), an empty
                    element as a statement (br;), text as a quoted string.
                    An element whose HTML end tag was omitted opens and
-                   closes with ~ (li ~ … ~), so every { has its }.
+                   closes with ~ (li ~ … ~), so every { has its }. Text
+                   drops trailing line-break whitespace and is shown with
+                   character references decoded (&amp; -> &), except in
+                   HTML <script>/<style>.
   -l, --lang <l>   Force language: js | xml | html | rust | sql | py | yaml |
                    json5. Default: detect from the file extension
                    (.xml/.svg -> xml, .html/.htm -> html, .rs -> rust,

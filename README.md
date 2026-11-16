@@ -55,6 +55,7 @@ node tdump.js --outline 3 samples\sample.html
                                 :: attributes are hidden
 node tdump.js --outline 3 --clike samples\sample.xml
                                 :: the same tree C-like: catalog { … }, br;, "text"
+                                :: (omitted end tags as li ~ … ~, &amp; shown as &)
 node tfreq.js src\              :: token/operator-role frequencies over a tree
 node tfind.js -u 2 "PRINT?rawJob=true" "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"
                                 :: zoom by CONTENT instead of depth — breadcrumb of
