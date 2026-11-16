@@ -337,6 +337,13 @@ test('tdump --outline --clike: name before the brace, bare close', () => {
   // trailing space is content and stays
   assert.deepEqual(body(outlineView('<p>a <b>b</b>\n<p>c\n  </p>', 'html', 3, { clike: true })),
     ['p ~', '  "a "', '  b {', '    "b"', '  }', '~', 'p {', '  "c"', '}']);
+  // character references are decoded (numeric everywhere, XML's five, a few
+  // HTML names); unknown ones stay as written, raw <script>/<style> text and
+  // CDATA are never decoded
+  assert.deepEqual(body(outlineView('<a>x &amp; &lt;y&gt; &#65;&#x42; &nbsp; &bogus; &#0;<![CDATA[&amp;]]></a>', 'xml', 3, { clike: true })),
+    ['a {', '  "x & <y> AB &nbsp; &bogus; &#0;"', '  ! <![CDATA[&amp;]]>', '}']);
+  assert.deepEqual(body(outlineView('<script>a &amp;&amp; b</script><title>A &amp; B&nbsp;&hellip;</title>', 'html', 3, { clike: true })),
+    ['script {', '  "a &amp;&amp; b"', '}', 'title {', '  "A & B …"', '}']);
   // other languages are unchanged
   assert.equal(outlineView('{"a": [1]}', 'json5', 3, { clike: true }), outlineView('{"a": [1]}', 'json5', 3));
   const r = spawnSync(process.execPath, ['tdump.js', '--clike', 'samples/sample.xml'], { encoding: 'utf8' });
