@@ -18,7 +18,19 @@ regression suite (#50), and the **HTML wave** (#51–#57: optional end tags,
 HTML mode in unilexer, content-based ends, attribute-free outlines, and a
 sample page that exercises all of it).
 
-## Unreleased — --clike: trailing layout whitespace trimmed
+## Unreleased — --clike: character references decoded
+
+- `--clike` text now shows what it says, not how it was escaped:
+  `"XML &amp; the art of &gt; brackets"` reads `"XML & the art of > brackets"`.
+  Numeric references (`&#65;`, `&#x42;`) and XML's five named entities are
+  decoded everywhere, plus a handful of common HTML names (`&nbsp;`,
+  `&hellip;`, `&mdash;`, …) in HTML. An unknown or malformed reference stays
+  as written.
+- HTML `<script>`/`<style>` text is raw, so `&amp;` there is left alone;
+  `<title>`/`<textarea>` do decode. CDATA is a declaration, not text, and is
+  never touched. The tape and the default outline are unchanged.
+
+## PR #61 — --clike: trailing layout whitespace trimmed · 2026-11-15
 
 - Text that runs up to an omitted end tag keeps the line break and the next
   line's indentation (`"Amount\n    "`) — right for the tape, noise in the

@@ -216,7 +216,7 @@ function skipAttributes(u, n, t) {
 // omitted opens AND closes with `~` (`li ~` … `~`): braces always match, and
 // the view never claims a close that is not in the source. Everything else
 // (declarations, other languages) is unchanged.
-function clikeLabel(u, t, unmatched) {
+function clikeLabel(u, t, unmatched, html = false) {
   const tag = u.tagOf(t);
   const lex = u.lexemeOf(t);
   if (u.classOf(t) === KLASS.TAG) {
@@ -234,17 +234,52 @@ function clikeLabel(u, t, unmatched) {
     // trailing source indentation (a line break plus the next line's indent,
     // kept by text before an omitted end tag) is layout, not content: drop
     // it. A trailing space on the same line ("Intro with ") stays.
-    const txt = lex.replace(/\s*[\r\n]\s*$/, '');
+    let txt = lex.replace(/\s*[\r\n]\s*$/, '');
+    if (!(html && inRawText(u, t))) txt = decodeEntities(txt, html);
     return JSON.stringify(txt.length > 60 ? txt.slice(0, 60) + '…' : txt);
   }
   return outlineLabel(u, t);
+}
+
+// Character references in --clike text are decoded (the view shows what the
+// text says, `"XML & the art"`, not how it was escaped). XML's five
+// predefined entities plus numeric references (&#38; &#x26;) everywhere;
+// in HTML also a handful of common named ones. An unknown or malformed
+// reference is left as written, never guessed at.
+const XML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+const HTML_ENTITIES = {
+  ...XML_ENTITIES, nbsp: ' ', copy: '©', reg: '®', trade: '™',
+  hellip: '…', mdash: '—', ndash: '–', lsquo: '‘', rsquo: '’', ldquo: '“',
+  rdquo: '”', laquo: '«', raquo: '»', middot: '·', times: '×', deg: '°',
+  euro: '€', shy: '­',
+};
+function decodeEntities(s, html) {
+  const named = html ? HTML_ENTITIES : XML_ENTITIES;
+  return s.replace(/&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([A-Za-z][A-Za-z0-9]*));/g, (m, dec, hex, name) => {
+    if (name !== undefined) return Object.hasOwn(named, name) ? named[name] : m;
+    const cp = dec !== undefined ? parseInt(dec, 10) : parseInt(hex, 16);
+    return cp > 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF) ? String.fromCodePoint(cp) : m;
+  });
+}
+
+// HTML <script>/<style> hold raw text: '&amp;' there is four characters, not
+// an escape (title/textarea do decode references, so they are not listed).
+// The text's element is the nearest TAG token before it — attributes in
+// between are IDENT/STRING/PUNCT, never TAG.
+const RAW_TEXT_NO_REFS = new Set(['script', 'style']);
+function inRawText(u, t) {
+  for (let i = t - 1; i >= 0; i--) {
+    if (u.classOf(i) !== KLASS.TAG) continue;
+    return u.tagOf(i) === 0x7B && RAW_TEXT_NO_REFS.has(u.lexemeOf(i).toLowerCase());
+  }
+  return false;
 }
 
 function outlineView(src, lang, maxDepth, { clike = false } = {}) {
   const u = tokenize(src, lang);
   const n = u.length;
   const markup = lang === 'xml' || lang === 'html';
-  const label = markup && clike ? (t, unmatched = false) => clikeLabel(u, t, unmatched) : (t) => outlineLabel(u, t);
+  const label = markup && clike ? (t, unmatched = false) => clikeLabel(u, t, unmatched, lang === 'html') : (t) => outlineLabel(u, t);
   const lines = [];
   let t = 0;
   while (t < n) {
