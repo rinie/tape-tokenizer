@@ -26,11 +26,20 @@ shortcodes — tolerantly, where Quarto 2's own parser is strict; #66–#67:
 docs, complete argument-less shortcodes), cut as **v0.8.0**. After it, qmd
 lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69), a list
 item's line as a block of its own (#71), grid tables in the same layout
-(#72), an outline fix for a table right after a tag (#73), and a sibling
+(#72), an outline fix for a table right after a tag (#73), a sibling
 list item after a nested one (#75), escaped cells with their language
-(#77), and block quotes.
+(#77), and block quotes (#78), cut as **v0.9.0**.
 
-## Unreleased — qmd: block quotes
+## v0.9.0 · 2026-11-22
+
+qmd beyond its first sketch, through #78: lists, pipe and grid tables in a
+`[]` layout, block quotes, escaped cells with their language, and the
+fixes Quarto's own docs pages turned up (a list item's line as a block,
+a sibling item after a nested one, a table right after a tag in the
+outline). Every real page tried (callouts, markdown-basics, tables,
+figures) is lossless with no findings.
+
+## PR #78 — qmd: block quotes · 2026-11-22
 
 - `>` lines are a block quote: `blockquote ~ … ~` (no closer in the
   source, so an implied `~`). The first `>` is the opener's span, later
