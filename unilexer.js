@@ -977,6 +977,13 @@ class UniLexer {
       for (let s = stack.length - 1; s >= 0; s--) if (stack[s].kind === 'item') return stack[s].contentCol;
       return 0;
     };
+    // the content column of the innermost open item a line at column col can
+    // belong to: deeper items it is left of are about to end (a '- b' at 4
+    // after '- a' at 4 opened an item whose content is at 6)
+    const baseFor = (col) => {
+      for (let s = stack.length - 1; s >= 0; s--) if (stack[s].kind === 'item' && stack[s].contentCol <= col) return stack[s].contentCol;
+      return 0;
+    };
     // a line at column col ends the list items / lists it is not part of
     const endLists = (off, col, mk, lazy) => {
       for (;;) {
@@ -1063,8 +1070,7 @@ class UniLexer {
     // resumes. Re-entered for the rest of a list-item line.
     const block = (cs, ce, next, col) => {
       const content = src.slice(cs, ce);
-      const rel = col - itemBase();
-      const small = col <= 3 || (rel >= 0 && rel <= 3);          // block indent, item-relative
+      const small = col - baseFor(col) <= 3;                     // block indent, item-relative
 
       // what this line is decides which lists it ends (a lazy text line
       // continues the item's paragraph)
