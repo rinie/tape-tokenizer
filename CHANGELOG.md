@@ -23,9 +23,10 @@ without layout whitespace and with character references decoded; #63–#64:
 docs and an entity-bearing HTML sample). Then a first **Markdown** step
 (#65: Quarto qmd block structure — sections, fenced divs, code cells,
 shortcodes — tolerantly, where Quarto 2's own parser is strict; #66–#67:
-docs, complete argument-less shortcodes), cut as **v0.8.0**.
+docs, complete argument-less shortcodes), cut as **v0.8.0**. After it, qmd
+lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69).
 
-## Unreleased — qmd: lists and pipe tables
+## PR #69 — qmd: lists and pipe tables · 2026-11-22
 
 - **Lists**: `- ` / `* ` / `+ ` open `ul`, `1. ` / `1) ` `ol`, every marker
   an `li`. Nothing in the source closes them (HTML's `<li>` again), so they
