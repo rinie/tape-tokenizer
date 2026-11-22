@@ -25,9 +25,10 @@ docs and an entity-bearing HTML sample). Then a first **Markdown** step
 shortcodes — tolerantly, where Quarto 2's own parser is strict; #66–#67:
 docs, complete argument-less shortcodes), cut as **v0.8.0**. After it, qmd
 lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69), a list
-item's line as a block of its own (#71), and grid tables in the same layout.
+item's line as a block of its own (#71), grid tables in the same layout
+(#72), and an outline fix for a table right after a tag (#73).
 
-## Unreleased — tdump: a qmd table right after a tag keeps its brackets
+## PR #73 — tdump: a qmd table right after a tag keeps its brackets · 2026-11-22
 
 - `tdump --outline` skips a start tag's attribute tokens, up to the next
   tag/text/comment/declaration. qmd tags have no attributes, but the skip
