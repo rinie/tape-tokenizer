@@ -315,15 +315,16 @@ test('qmd: code bodies are raw text — fences, ::: and shortcodes inside are co
 });
 
 test('qmd: front matter, comments, shortcodes (not in inline code, not escaped)', () => {
-  const { out, findings, tp } = qmdTags('---\na: 1\n---\n<!-- ::: -->\nSee {{< meta a >}}, `{{< no >}}` and {{{< esc >}}} or {{< open\n');
-  assert.deepEqual(out, ['! ---\na: 1\n---', '{ sc.meta', '} sc.meta', '{ sc.open']);
+  const { out, findings, tp } = qmdTags('---\na: 1\n---\n<!-- ::: -->\nSee {{< meta a >}}, `{{< no >}}` and {{{< esc >}}}, {{< pagebreak >}}{{% br %}} or {{< open\n');
+  // an argument-less shortcode is one complete '/' token, like <br/>
+  assert.deepEqual(out, ['! ---\na: 1\n---', '{ sc.meta', '} sc.meta', '/ sc.pagebreak', '/ sc.br', '{ sc.open']);
   assert.deepEqual(findings, ['unclosed-tag:sc.open']);
   assert.ok([...Array(tp.length).keys()].some((t) => tp.classOf(t) === KLASS.COMMENT));
 });
 
 test('qmd: tdump --outline --clike and samples/sample.qmd', () => {
-  assert.deepEqual(outlineView('# T\n::: note\nhi\n:::\n```{r}\n1\n```\n', 'qmd', 99, { clike: true }).split('\n').slice(1),
-    ['h1 ~', '  "T"', '  div.note {', '    "hi"', '  }', '  cell.r {', '    "1"', '  }', '~']);
+  assert.deepEqual(outlineView('# T\n::: note\nhi\n:::\n```{r}\n1\n```\n{{< pagebreak >}}\n', 'qmd', 99, { clike: true }).split('\n').slice(1),
+    ['h1 ~', '  "T"', '  div.note {', '    "hi"', '  }', '  cell.r {', '    "1"', '  }', '  sc.pagebreak;', '~']);
   const src = readFileSync('samples/sample.qmd', 'utf8');
   const { findings } = qmdTags(src);
   assert.deepEqual(findings, ['orphan-close-tag::::'], 'one deliberate seam: the stray :::');

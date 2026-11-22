@@ -23,6 +23,14 @@ docs and an entity-bearing HTML sample). Then a first **Markdown** step
 (#65: Quarto qmd block structure — sections, fenced divs, code cells,
 shortcodes — tolerantly, where Quarto 2's own parser is strict).
 
+## Unreleased — qmd: argument-less shortcodes are complete
+
+- `{{< pagebreak >}}` printed as an empty `sc.pagebreak {` … `}` block. A
+  shortcode with no arguments is now ONE self-linked `/` token spanning the
+  whole shortcode, like `<br/>`: `sc.pagebreak;` in `--clike`,
+  `/ sc.pagebreak` in the default outline. Shortcodes with arguments keep
+  their `{ … }` pair; the tape stays lossless.
+
 ## PR #65 — qmd: Quarto Markdown block structure (prototype) · 2026-11-22
 
 - Prompted by Quarto 2's parser post ("Parsing and Source Maps", Posit, May
