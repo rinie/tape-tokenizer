@@ -27,9 +27,27 @@ docs, complete argument-less shortcodes), cut as **v0.8.0**. After it, qmd
 lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69), a list
 item's line as a block of its own (#71), grid tables in the same layout
 (#72), an outline fix for a table right after a tag (#73), and a sibling
-list item after a nested one (#75).
+list item after a nested one (#75), escaped cells with their language
+(#77), and block quotes.
 
-## Unreleased — qmd: escaped cells keep their language
+## Unreleased — qmd: block quotes
+
+- `>` lines are a block quote: `blockquote ~ … ~` (no closer in the
+  source, so an implied `~`). The first `>` is the opener's span, later
+  ones are `>` punct. The rest of a `>` line is a block of its own —
+  lists, fences, headings, divs and nested `> >` quotes work inside.
+- A quote ends at a blank line, or at a line without `>` that is not a
+  lazy continuation of its paragraph; a blank `>` line ends quotes nested
+  deeper. A fence inside closes on a `>` line, or ends with its quote as
+  `code ~`; its body keeps the `> ` marks (raw text, lossless).
+- Simplified: in `> > a` / `> b`, `b` returns to the outer quote
+  (CommonMark keeps it in the inner paragraph); a pipe or grid table inside
+  a quote stays text.
+- Quarto's markdown-basics.qmd: the Gruber quote is now a `blockquote`;
+  callouts.qmd, figures.qmd, tables.qmd outline unchanged. sample.qmd
+  gains a quote holding a list.
+
+## PR #77 — qmd: escaped cells keep their language · 2026-11-22
 
 - Quarto's ```` ```{{python}} ```` / ```` ```{{r}} ```` is an escaped cell: shown
   with its fences, not run. The fence label rule allowed one `{`, so the

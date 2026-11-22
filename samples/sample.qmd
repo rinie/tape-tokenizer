@@ -8,7 +8,8 @@ execute:
 <!-- qmd sample for the unilexer qmd mode: front matter, ATX sections that
      end implicitly, fenced divs (nested, with attributes), executable code
      cells and plain code blocks whose bodies hold fence- and shortcode-looking
-     text, inline shortcodes, a pipe table and a nested list. One seam is
+     text, inline shortcodes, pipe and grid tables, a nested list and a
+     block quote holding a list. One seam is
      deliberate: a stray ':::' after the summary div, closing nothing. -->
 
 # Overview
@@ -59,6 +60,11 @@ A fence inside a longer fence:
 {{< include _details.qmd >}}
 
 ### Notes
+
+> Amounts are net:
+>
+> - VAT is booked separately
+> - rounding is per order
 
 ::: summary
 Three orders, 35.50 in total.
