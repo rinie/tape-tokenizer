@@ -312,6 +312,9 @@ test('qmd: code bodies are raw text — fences, ::: and shortcodes inside are co
   const texts = [];
   for (let t = 0; t < tp.length; t++) if (tp.classOf(t) === KLASS.TEXT) texts.push(tp.lexemeOf(t));
   assert.deepEqual(texts, ['::: x\n{{< y >}}\n', '```\n', 'z\n']);
+  // an escaped cell ({{python}}: shown, not run) is code in its language
+  assert.deepEqual(qmdTags('```{{python}}\n1\n```\n```{.r}\n2\n```\n').out,
+    ['{ code.python', '} code.python', '{ code.r', '} code.r']);
 });
 
 test('qmd: front matter, comments, shortcodes (not in inline code, not escaped)', () => {

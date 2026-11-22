@@ -29,6 +29,16 @@ item's line as a block of its own (#71), grid tables in the same layout
 (#72), an outline fix for a table right after a tag (#73), and a sibling
 list item after a nested one (#75).
 
+## Unreleased — qmd: escaped cells keep their language
+
+- Quarto's ```` ```{{python}} ```` / ```` ```{{r}} ```` is an escaped cell: shown
+  with its fences, not run. The fence label rule allowed one `{`, so the
+  double brace fell through to a bare `code { … }`. Up to two braces now
+  give `code.python` / `code.r` — `code`, not `cell`, since nothing runs.
+- Quarto's figures.qmd: five escaped cells now carry their language,
+  tables.qmd one; callouts.qmd, markdown-basics.qmd and sample.qmd outline
+  unchanged. All lossless, no new findings.
+
 ## PR #75 — qmd: a sibling item after a nested one · 2026-11-22
 
 - Quarto's `docs/authoring/tables.qmd` (a list table) has `  - Count
