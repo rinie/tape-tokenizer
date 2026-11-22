@@ -1,0 +1,64 @@
+---
+title: "Orders report"
+format: html
+execute:
+  echo: false
+---
+
+<!-- qmd sample for the unilexer qmd mode: front matter, ATX sections that
+     end implicitly, fenced divs (nested, with attributes), executable code
+     cells and plain code blocks whose bodies hold fence- and shortcode-looking
+     text, and inline shortcodes. One seam is deliberate: a stray ':::' after
+     the summary div, closing nothing. -->
+
+# Overview
+
+This report summarises the order totals. See {{< meta title >}} for the
+source, and `{{< not-a-shortcode >}}` inside inline code is just code.
+
+::: {.callout-note appearance="minimal"}
+Totals are in EUR.
+
+::: {#tbl-orders .panel-tabset}
+## Table
+
+```{r}
+#| label: orders
+orders <- read.csv("orders.csv")
+knitr::kable(orders)
+```
+
+## Chart
+
+```{python}
+# ::: and {{< x >}} in a code cell are code, not structure
+import pandas as pd
+```
+:::
+:::
+
+## Details
+
+````markdown
+A fence inside a longer fence:
+```{r}
+1 + 1
+```
+````
+
+{{< include _details.qmd >}}
+
+### Notes
+
+::: summary
+Three orders, 35.50 in total.
+:::
+:::
+
+# Appendix
+
+{{< pagebreak >}}
+
+~~~bash
+quarto render sample.qmd
+~~~

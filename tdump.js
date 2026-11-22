@@ -61,12 +61,15 @@ OPTIONS
                    closes with ~ (li ~ … ~), so every { has its }. Text
                    drops trailing line-break whitespace and is shown with
                    character references decoded (&amp; -> &), except in
-                   HTML <script>/<style>.
+                   HTML <script>/<style>. qmd uses the same layout
+                   (h2 ~ … ~, div.callout-note { … }, cell.r { … }),
+                   text undecoded.
   -l, --lang <l>   Force language: js | xml | html | rust | sql | py | yaml |
-                   json5. Default: detect from the file extension
+                   json5 | qmd. Default: detect from the file extension
                    (.xml/.svg -> xml, .html/.htm -> html, .rs -> rust,
                    .sql/.pks/.pkb -> sql [Oracle], .py -> py,
-                   .yaml/.yml -> yaml, .json/.json5/.jsonc -> json5, else js).
+                   .yaml/.yml -> yaml, .json/.json5/.jsonc -> json5,
+                   .qmd -> qmd [Quarto block structure], else js).
   -h, --help       Show this help and exit.
   -V, --version    Print version and exit.
 
@@ -219,7 +222,7 @@ function skipAttributes(u, n, t) {
 // omitted opens AND closes with `~` (`li ~` … `~`): braces always match, and
 // the view never claims a close that is not in the source. Everything else
 // (declarations, other languages) is unchanged.
-function clikeLabel(u, t, unmatched, html = false) {
+function clikeLabel(u, t, unmatched, html = false, decode = true) {
   const tag = u.tagOf(t);
   const lex = u.lexemeOf(t);
   if (u.classOf(t) === KLASS.TAG) {
@@ -238,7 +241,8 @@ function clikeLabel(u, t, unmatched, html = false) {
     // kept by text before an omitted end tag) is layout, not content: drop
     // it. A trailing space on the same line ("Intro with ") stays.
     let txt = lex.replace(/\s*[\r\n]\s*$/, '');
-    if (!(html && inRawText(u, t))) txt = decodeEntities(txt, html);
+    // qmd: no decoding — a code cell's body is code
+    if (decode && !(html && inRawText(u, t))) txt = decodeEntities(txt, html);
     return JSON.stringify(txt.length > 60 ? txt.slice(0, 60) + '…' : txt);
   }
   return outlineLabel(u, t);
@@ -281,8 +285,8 @@ function inRawText(u, t) {
 function outlineView(src, lang, maxDepth, { clike = false } = {}) {
   const u = tokenize(src, lang);
   const n = u.length;
-  const markup = lang === 'xml' || lang === 'html';
-  const label = markup && clike ? (t, unmatched = false) => clikeLabel(u, t, unmatched, lang === 'html') : (t) => outlineLabel(u, t);
+  const markup = lang === 'xml' || lang === 'html' || lang === 'qmd';
+  const label = markup && clike ? (t, unmatched = false) => clikeLabel(u, t, unmatched, lang === 'html', lang !== 'qmd') : (t) => outlineLabel(u, t);
   const lines = [];
   let t = 0;
   while (t < n) {

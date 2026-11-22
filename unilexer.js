@@ -32,8 +32,8 @@
 // a 256-entry lookup — no second per-token column. Mnemonic for humans, class
 // for machines, one byte for both.
 //
-// Scope: JS, JSON5 (accepts plain JSON), Rust, XML, Oracle SQL/PL-SQL, Python
-// and YAML. sfdiff.js, defuse.js, tdump.js, tfind.js and tfreq.js ride this
+// Scope: JS, JSON5 (accepts plain JSON), Rust, XML, HTML, Oracle SQL/PL-SQL,
+// Python, YAML and Quarto qmd (block structure). sfdiff.js, defuse.js, tdump.js, tfind.js and tfreq.js ride this
 // module; lexical-scanner.js (scan/validate — seams, cpp conditionals,
 // provenance policy) is still a migration target.
 
@@ -838,6 +838,215 @@ class UniLexer {
 
   tokenizeHtml(src) {
     return this.tokenizeXml(src, { html: true });
+  }
+
+  // ── Quarto Markdown (qmd) mode — the BLOCK structure, tolerantly ──────────
+  // A prototype: the constructs that nest or delimit, on the same tape and
+  // with the same tag bytes as XML/HTML (names CSS-like, attributes hidden in
+  // the opener's span). Inline Markdown (emphasis, links) is grammar, not
+  // classification, and stays plain text.
+  //
+  //   front matter   ---…--- at the very start: ONE '!' declaration token
+  //   sections       '# …' / '## …' open h1…h6; a heading of the same or a
+  //                  higher level ends them with a zero-width '~' (the HTML
+  //                  optional-end idea) — never past an enclosing div
+  //   fenced divs    '::: {.callout-note}' / '::: summary' opens div.callout-
+  //                  note / div.summary (#id kept: div.panel-tabset#tbl-x);
+  //                  a bare ':::' closes the nearest open div, ending any
+  //                  sections opened inside it. Nothing open: an orphan '}'
+  //   code           ```{r} opens cell.r (executable), ```python / ~~~bash
+  //                  code.python / code.bash, a bare fence 'code'. The body
+  //                  is ONE raw TEXT token (like <script>): fences, ':::' and
+  //                  shortcodes inside are code. Closed by the same fence
+  //                  char at least as long (CommonMark); unclosed runs to EOF
+  //   shortcodes     {{< name args >}} / {{% … %}} inline: sc.name { args };
+  //                  `inline code` and escaped {{{< … >}}} are skipped; no
+  //                  closer on the line: an unclosed opener, the rest is text
+  //
+  //   comments       a line starting '<!--' opens a comment through '-->'
+  //
+  // Not handled (text): setext headings, block quotes and list items as
+  // containers (a fence indented 4+ is not recognised), other raw HTML,
+  // indented code blocks.
+  tokenizeQmd(src) {
+    const tp = this._tape();
+    const { emit, link } = tp;
+    const len = src.length;
+    const stack = [];   // open divs/sections: { idx, name, kind, level }
+    let depth = 0;
+
+    const ws = (from, to) => {
+      if (to > from) this._emitWs((tg, lx, of, d) => emit(tg, KLASS.WS, lx, of, d), src, from, to, depth);
+    };
+    // text [a,b) as TEXT with its leading/trailing blanks as WS
+    const textOrWs = (a, b) => {
+      if (a >= b) return;
+      const s = src.slice(a, b);
+      const lead = a + s.search(/\S|$/);
+      const trail = a + s.replace(/\s+$/, '').length;
+      if (lead >= trail) { ws(a, b); return; }
+      ws(a, lead);
+      emit(0x54, KLASS.TEXT, src.slice(lead, trail), lead, depth);
+      ws(trail, b);
+    };
+    const closeTop = (off, tag) => {
+      const e = stack.pop();
+      depth = depth > 0 ? depth - 1 : 0;
+      link(e.idx, emit(tag, KLASS.TAG, e.name, off, depth));
+    };
+    const endSections = (off, level) => {
+      while (stack.length && stack[stack.length - 1].kind === 'section' && stack[stack.length - 1].level >= level) closeTop(off, TAG_IMPLIED);
+    };
+    // a line's inline content: shortcodes are the only structure
+    const inline = (a, b) => {
+      let t = a;
+      let k = a;
+      while (k < b) {
+        const ch = src.charCodeAt(k);
+        if (ch === 0x60) {                                       // `code span`
+          let r = k; while (r < b && src.charCodeAt(r) === 0x60) r++;
+          const fence = src.slice(k, r);
+          let c = src.indexOf(fence, r);
+          while (c !== -1 && c < b && src.charCodeAt(c + fence.length) === 0x60) c = src.indexOf(fence, c + fence.length + 1);
+          k = c !== -1 && c + fence.length <= b ? c + fence.length : r;
+          continue;
+        }
+        const kind = src[k + 2];
+        if (ch === 0x7B && src.charCodeAt(k + 1) === 0x7B && (kind === '<' || kind === '%') && src[k - 1] !== '{') {
+          const m = /^\{\{[<%][ \t]*([^\s>%}]+)/.exec(src.slice(k, b));
+          if (!m) { k++; continue; }
+          const name = `sc.${m[1]}`;
+          const nameEnd = k + m[0].length;
+          const cEnd = src.indexOf(kind === '<' ? '>}}' : '%}}', nameEnd);
+          textOrWs(t, k);
+          const idx = emit(0x7B, KLASS.TAG, name, k, depth);
+          if (cEnd === -1 || cEnd + 3 > b) { t = k = nameEnd; continue; }  // unclosed: rest is text
+          depth++; textOrWs(nameEnd, cEnd); depth--;
+          link(idx, emit(0x7D, KLASS.TAG, name, cEnd, depth));
+          t = k = cEnd + 3;
+          continue;
+        }
+        k++;
+      }
+      textOrWs(t, b);
+    };
+    const lineAt = (p) => {                                      // [start, content end, next line)
+      let le = src.indexOf('\n', p); if (le === -1) le = len;
+      const ce = le > p && src.charCodeAt(le - 1) === 0x0D ? le - 1 : le;
+      return { ce, next: Math.min(le + 1, len) };
+    };
+
+    let i = 0;
+    // front matter: '---' on the first line, closed by '---' or '...'
+    if (/^---[ \t]*\r?\n/.test(src)) {
+      const re = /^(?:---|\.\.\.)[ \t]*\r?$/gm;
+      re.lastIndex = src.indexOf('\n') + 1;
+      const m = re.exec(src);
+      if (m) {
+        i = m.index + m[0].replace(/\r$/, '').length;
+        emit(0x21, KLASS.DECL, src.slice(0, i), 0, 0);
+      }
+    }
+
+    while (i < len) {
+      const c0 = src.charCodeAt(i);
+      if (c0 === 0x0A || c0 === 0x0D) {                          // newline run
+        let j = i; while (j < len && (src.charCodeAt(j) === 0x0A || src.charCodeAt(j) === 0x0D)) j++;
+        ws(i, j); i = j; continue;
+      }
+      const { ce, next } = lineAt(i);
+      const line = src.slice(i, ce);
+      const ind = /^[ \t]*/.exec(line)[0].length;
+      const cs = i + ind;
+      const content = line.slice(ind);
+      ws(i, cs);
+      const small = ind <= 3;
+
+      if (small && content.startsWith('<!--')) {                // HTML comment block:
+        const e = src.indexOf('-->', cs + 4);                    // ':::' inside is prose
+        const end = e === -1 ? len : e + 3;
+        const cmt = src.slice(cs, end);
+        emit(cmt.includes('\n') ? TAG_COMMENT_ML : TAG_COMMENT, KLASS.COMMENT, cmt, cs, depth);
+        i = end; continue;
+      }
+      let m;
+      if (small && (m = /^(`{3,}|~{3,})[ \t]*(.*)$/.exec(content)) && !(m[1][0] === '`' && m[2].includes('`'))) {
+        // code fence: opener token spans the fence line (info string hidden)
+        const info = m[2].trim();
+        let lang;
+        if ((lang = /^\{([A-Za-z][\w-]*)/.exec(info))) lang = `cell.${lang[1]}`;
+        else if ((lang = /^\{?\.?([A-Za-z][\w+-]*)/.exec(info))) lang = `code.${lang[1]}`;
+        else lang = 'code';
+        const idx = emit(0x7B, KLASS.TAG, lang, cs, depth);
+        depth++;
+        const closeRe = new RegExp(`^ {0,3}${m[1][0] === '`' ? '`' : '~'}{${m[1].length},}[ \\t]*$`);
+        let p = next;
+        let closeAt = -1;
+        while (p < len) {
+          const l = lineAt(p);
+          if (closeRe.test(src.slice(p, l.ce))) { closeAt = p; break; }
+          p = l.next;
+        }
+        const bodyStart = Math.min(ce + (src.charCodeAt(ce) === 0x0D ? 2 : 1), len);
+        ws(ce, bodyStart);
+        const bodyEnd = closeAt === -1 ? len : closeAt;
+        if (bodyEnd > bodyStart) {
+          const body = src.slice(bodyStart, bodyEnd);
+          if (/^\s+$/.test(body)) ws(bodyStart, bodyEnd);
+          else emit(0x54, KLASS.TEXT, body, bodyStart, depth);
+        }
+        depth--;
+        if (closeAt === -1) { i = len; continue; }               // unclosed: link stays -1
+        const l = lineAt(closeAt);
+        const fenceOff = closeAt + /^ */.exec(src.slice(closeAt, l.ce))[0].length;
+        ws(closeAt, fenceOff);
+        link(idx, emit(0x7D, KLASS.TAG, lang, fenceOff, depth));
+        i = l.ce; continue;
+      }
+      if (small && (m = /^:{3,}[ \t]*(.*?)[ \t]*$/.exec(content))) {
+        const rest = m[1];
+        if (rest) {                                              // opener
+          let name = 'div';
+          if (rest[0] === '{') {
+            const cls = /\.([\w-]+)/.exec(rest);
+            const id = /#([\w:.-]+)/.exec(rest);
+            if (cls) name += `.${cls[1]}`;
+            if (id) name += `#${id[1]}`;
+          } else name += `.${rest.split(/\s/)[0]}`;
+          const idx = emit(0x7B, KLASS.TAG, name, cs, depth);
+          stack.push({ idx, name, kind: 'div' });
+          depth++;
+        } else {                                                 // closer: nearest open div
+          let s = stack.length - 1;
+          while (s >= 0 && stack[s].kind !== 'div') s--;
+          if (s === -1) emit(0x7D, KLASS.TAG, ':::', cs, depth);  // orphan
+          else {
+            while (stack.length - 1 > s) closeTop(cs, TAG_IMPLIED);  // sections inside it
+            closeTop(cs, 0x7D);
+          }
+        }
+        i = ce; continue;
+      }
+      if (small && (m = /^(#{1,6})(?:[ \t]+|$)/.exec(content))) {
+        const level = m[1].length;
+        endSections(cs, level);
+        const idx = emit(0x7B, KLASS.TAG, `h${level}`, cs, depth);
+        stack.push({ idx, name: `h${level}`, kind: 'section', level });
+        depth++;
+        inline(cs + m[0].length, ce);
+        i = ce; continue;
+      }
+      inline(cs, ce);
+      i = ce;
+    }
+
+    // EOF ends every open section; a div still open stays unclosed (-1)
+    while (stack.length) {
+      if (stack[stack.length - 1].kind === 'section') closeTop(len, TAG_IMPLIED);
+      else { stack.pop(); depth = depth > 0 ? depth - 1 : 0; }
+    }
+
+    return tp.finish(this, src, TAG_CLASS_XML, true);
   }
 
   // Split a whitespace run [from,to) into NEWLINE tokens (TAG_NL — each
@@ -1694,7 +1903,7 @@ class UniLexer {
 }
 
 // ── language dispatch (shared by tdump / tfind / tfreq) ─────────────────────
-const LANGS = ['js', 'xml', 'html', 'rust', 'sql', 'py', 'yaml', 'json5'];
+const LANGS = ['js', 'xml', 'html', 'rust', 'sql', 'py', 'yaml', 'json5', 'qmd'];
 const EXT_LANG = {
   '.js': 'js', '.mjs': 'js', '.cjs': 'js', '.jsx': 'js',
   '.xml': 'xml', '.svg': 'xml',
@@ -1704,6 +1913,7 @@ const EXT_LANG = {
   '.py': 'py',
   '.yaml': 'yaml', '.yml': 'yaml',
   '.json': 'json5', '.json5': 'json5', '.jsonc': 'json5',
+  '.qmd': 'qmd',
 };
 
 // Language for a file path by extension, or null when unknown.
@@ -1723,7 +1933,8 @@ function tokenizeAs(src, lang) {
     case 'py':    return u.tokenizePy(src);
     case 'yaml':  return u.tokenizeYaml(src);
     case 'json5': return u.tokenizeJson5(src);
-    default:      return u.tokenize(src);
+    case 'qmd':   return u.tokenizeQmd(src);
+    default:     return u.tokenize(src);
   }
 }
 

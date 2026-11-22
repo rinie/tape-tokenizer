@@ -34,7 +34,7 @@ USAGE
 OPTIONS
   -i, --ignore-case   Case-insensitive substring match.
   -l, --lang <l>      Force language: js | xml | html | rust | sql | py | yaml |
-                      json5.
+                      json5 | qmd.
                       Default: detect from the file extension (see tdump.js --help).
   -c, --context       Breadcrumb-only view: print each match's breadcrumb
                       and skip the zoomed text.

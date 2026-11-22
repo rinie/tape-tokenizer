@@ -20,7 +20,34 @@ sample page that exercises all of it), a docs sync (#58), and the **C-like
 outline** (#59–#62: `tdump --clike`, matching `~` for omitted end tags, text
 without layout whitespace and with character references decoded).
 
-## Unreleased — samples/sample.html: &amp; entities
+## Unreleased — qmd: Quarto Markdown block structure (prototype)
+
+- Prompted by Quarto 2's parser post ("Parsing and Source Maps", Posit, May
+  2026), which makes the opposite choice — a formal grammar, and a document
+  that fails it is refused. The tape takes the other half of Postel's Law:
+  structure recorded tolerantly, imbalance reported, both boundaries kept,
+  `reconstruct()` lossless (so nothing is lost the way `*a*`/`_a_` merge in
+  a Pandoc AST).
+- `unilexer.tokenizeQmd` (`-l qmd`, `.qmd`), on the XML/HTML tag bytes:
+  front matter as one `!`; ATX headings open `h1`…`h6`, ended by a heading
+  of the same or a higher level with a zero-width `~` (the HTML optional-end
+  idea), never past an enclosing div; `::: {.callout-note}` opens
+  `div.callout-note` (with `#id`), a bare `:::` closes the nearest div and
+  the sections inside it; ```` ```{r} ```` opens `cell.r`, other fences
+  `code.<lang>` / `code`, with ONE raw-text body (fences, `:::`, shortcodes
+  inside are code; CommonMark's at-least-as-long closer); inline
+  `{{< name … >}}` is `sc.name { … }`, skipped inside `` `code` `` and when
+  escaped `{{{< >}}}`; a `<!--` block is a comment.
+- Findings: a stray `:::` is an orphan close, an unclosed div, fence or
+  shortcode an unclosed opener — on the tape, not an error.
+- `tdump --outline` (both layouts; `--clike` text is not entity-decoded
+  here), `tfind` breadcrumbs (`div.summary <- h3 <- h2 <- h1`) and `tfreq`
+  work unchanged. `samples/sample.qmd` has one deliberate stray `:::`.
+- Not handled yet: setext headings, block quotes and list items as
+  containers, other raw HTML, indented code; `scan.js` (lexical-scanner)
+  has no qmd table.
+
+## PR #64 — samples/sample.html: &amp; entities · 2026-11-16
 
 - The sample page now escapes `&` as `&amp;` in a link's text and `href`,
   a table header and the closing paragraph, so `tdump --outline 99 --clike`

@@ -277,6 +277,58 @@ test('tfind: a match ending in a newline keeps its header on one line', () => {
   assert.match(r.stdout, /^── token \d+: 25\.50\\n {3}──$/m);   // '25.50\n  ' + ' ──'
 });
 
+console.log('\n── unilexer qmd mode ──');
+
+// structural tokens (tags + declarations) as 'mnemonic lexeme'; lossless
+const qmdTags = (src) => {
+  const tp = L.tokenizeQmd(src);
+  assert.equal(tp.reconstruct(), src, 'tape is not lossless');
+  const out = [];
+  for (let t = 0; t < tp.length; t++) {
+    const k = tp.classOf(t);
+    if (k === KLASS.TAG || k === KLASS.DECL) out.push(`${tp.mnemonicOf(t)} ${tp.lexemeOf(t)}`);
+  }
+  return { out, findings: tp.repairMap().map((f) => `${f.kind}:${f.char}`), tp };
+};
+
+test('qmd: a heading of the same or a higher level ends a section (~)', () => {
+  const { out, findings } = qmdTags('# A\ntext\n## B\n### C\n## D\n# E\n');
+  assert.deepEqual(out, ['{ h1', '{ h2', '{ h3', '~ h3', '~ h2', '{ h2', '~ h2', '~ h1', '{ h1', '~ h1']);
+  assert.deepEqual(findings, []);
+});
+
+test('qmd: a ::: closer ends the sections inside its div; a stray one is an orphan', () => {
+  const { out, findings } = qmdTags('::: {.callout-note #c1}\n## In\nx\n:::\n## Out\n:::\n');
+  assert.deepEqual(out, ['{ div.callout-note#c1', '{ h2', '~ h2', '} div.callout-note#c1', '{ h2', '} :::', '~ h2']);
+  assert.deepEqual(findings, ['orphan-close-tag::::']);
+  // an unclosed div is reported, its sections still end at EOF
+  assert.deepEqual(qmdTags('::: aside\n# H\n').findings, ['unclosed-tag:div.aside']);
+});
+
+test('qmd: code bodies are raw text — fences, ::: and shortcodes inside are code', () => {
+  const { out, findings, tp } = qmdTags('```{r}\n::: x\n{{< y >}}\n```\n````\n```\n````\n~~~ python\nz\n');
+  assert.deepEqual(out, ['{ cell.r', '} cell.r', '{ code', '} code', '{ code.python']);
+  assert.deepEqual(findings, ['unclosed-tag:code.python']);   // runs to EOF, reported
+  const texts = [];
+  for (let t = 0; t < tp.length; t++) if (tp.classOf(t) === KLASS.TEXT) texts.push(tp.lexemeOf(t));
+  assert.deepEqual(texts, ['::: x\n{{< y >}}\n', '```\n', 'z\n']);
+});
+
+test('qmd: front matter, comments, shortcodes (not in inline code, not escaped)', () => {
+  const { out, findings, tp } = qmdTags('---\na: 1\n---\n<!-- ::: -->\nSee {{< meta a >}}, `{{< no >}}` and {{{< esc >}}} or {{< open\n');
+  assert.deepEqual(out, ['! ---\na: 1\n---', '{ sc.meta', '} sc.meta', '{ sc.open']);
+  assert.deepEqual(findings, ['unclosed-tag:sc.open']);
+  assert.ok([...Array(tp.length).keys()].some((t) => tp.classOf(t) === KLASS.COMMENT));
+});
+
+test('qmd: tdump --outline --clike and samples/sample.qmd', () => {
+  assert.deepEqual(outlineView('# T\n::: note\nhi\n:::\n```{r}\n1\n```\n', 'qmd', 99, { clike: true }).split('\n').slice(1),
+    ['h1 ~', '  "T"', '  div.note {', '    "hi"', '  }', '  cell.r {', '    "1"', '  }', '~']);
+  const src = readFileSync('samples/sample.qmd', 'utf8');
+  const { findings } = qmdTags(src);
+  assert.deepEqual(findings, ['orphan-close-tag::::'], 'one deliberate seam: the stray :::');
+});
+
 console.log('\n── tools ──');
 
 test('mergeGate: an unterminated string in the merge is not safe', () => {
