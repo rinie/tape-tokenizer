@@ -24,8 +24,8 @@ grammared into an AST.
 - **Quarto Markdown's block structure (prototype).** In `.qmd` files,
   sections (`#`…`######`, ended by the next heading as `~`), fenced divs
   (`:::`), code cells and code blocks (raw bodies), shortcodes
-  (`{{< … >}}`), lists (`ul`/`ol`/`li`, ended by `~`), pipe tables (a
-  `[]` layout: `[` rows `[` cells `]` `]`) and front matter go on the same
+  (`{{< … >}}`), lists (`ul`/`ol`/`li`, ended by `~`), pipe and grid
+  tables (a `[]` layout: `[` rows `[` cells `]` `]`) and front matter go on the same
   tape; a stray or unclosed
   `:::` or fence is a finding, never a refusal. Inline Markdown stays text.
 - **Per-language lexical tables.** JS, C, Python, XML, HTML. The scanner is
@@ -66,7 +66,7 @@ node tdump.js --outline 3 --clike samples\sample.xml
 node tdump.js --outline 99 --clike samples\sample.qmd
                                 :: Quarto: h1 ~ … ~ sections, div.callout-note { … },
                                 :: cell.r { … }, sc.include { … }, sc.pagebreak;
-                                :: ul ~ li ~ … ~ ~ lists, [ [ "Id" "Amount" ] … ] tables;
+                                :: ul ~ li ~ … ~ ~ lists, [ [ "Id" "Amount" ] … ] pipe and grid tables;
                                 :: a stray ':::' shows as } ::: …?
 node tfreq.js src\              :: token/operator-role frequencies over a tree
 node tfind.js -u 2 "PRINT?rawJob=true" "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"

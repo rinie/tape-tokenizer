@@ -69,6 +69,15 @@ Three orders, 35.50 in total.
 
 {{< pagebreak >}}
 
++--------+----------------------+
+| Status | Meaning              |
++========+======================+
+| open   | not yet paid         |
++--------+----------------------+
+| closed | paid in full, booked |
+|        | on {{< meta date >}} |
++--------+----------------------+
+
 ~~~bash
 quarto render sample.qmd
 ~~~
