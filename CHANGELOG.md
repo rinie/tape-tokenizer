@@ -18,9 +18,12 @@ regression suite (#50), and the **HTML wave** (#51–#57: optional end tags,
 HTML mode in unilexer, content-based ends, attribute-free outlines, and a
 sample page that exercises all of it), a docs sync (#58), and the **C-like
 outline** (#59–#62: `tdump --clike`, matching `~` for omitted end tags, text
-without layout whitespace and with character references decoded).
+without layout whitespace and with character references decoded; #63–#64:
+docs and an entity-bearing HTML sample). Then a first **Markdown** step
+(#65: Quarto qmd block structure — sections, fenced divs, code cells,
+shortcodes — tolerantly, where Quarto 2's own parser is strict).
 
-## Unreleased — qmd: Quarto Markdown block structure (prototype)
+## PR #65 — qmd: Quarto Markdown block structure (prototype) · 2026-11-22
 
 - Prompted by Quarto 2's parser post ("Parsing and Source Maps", Posit, May
   2026), which makes the opposite choice — a formal grammar, and a document

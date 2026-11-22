@@ -2,8 +2,8 @@
 
 A **tolerant, positional, structural tape scanner** for source code — and the
 flat-tape tokenizer it grew out of. It walks source as a byte stream and records
-the `(){}[]` structure (plus XML/HTML tags and C preprocessor conditionals) onto a
-single flat tape, **never faulting**: imbalance is reported as a *value* (a
+the `(){}[]` structure (plus XML/HTML tags, C preprocessor conditionals and
+Quarto Markdown blocks) onto a single flat tape, **never faulting**: imbalance is reported as a *value* (a
 repair map with both boundaries), not thrown as an error.
 
 Inspired by the [simdjson](https://github.com/simdjson/simdjson) tape: no
