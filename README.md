@@ -64,8 +64,7 @@ node tdump.js --outline 3 --clike samples\sample.xml
 node tdump.js --outline 99 --clike samples\sample.qmd
                                 :: Quarto: h1 ~ … ~ sections, div.callout-note { … },
                                 :: cell.r { … }, sc.include { … }, sc.pagebreak;
-                                :: a stray ':::'
-                                :: shows as } ::: …?
+                                :: a stray ':::' shows as } ::: …?
 node tfreq.js src\              :: token/operator-role frequencies over a tree
 node tfind.js -u 2 "PRINT?rawJob=true" "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"
                                 :: zoom by CONTENT instead of depth — breadcrumb of
