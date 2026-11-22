@@ -63,7 +63,8 @@ node tdump.js --outline 3 --clike samples\sample.xml
                                 :: (omitted end tags as li ~ … ~, &amp; shown as &)
 node tdump.js --outline 99 --clike samples\sample.qmd
                                 :: Quarto: h1 ~ … ~ sections, div.callout-note { … },
-                                :: cell.r { … }, sc.include { … }; a stray ':::'
+                                :: cell.r { … }, sc.include { … }, sc.pagebreak;
+                                :: a stray ':::'
                                 :: shows as } ::: …?
 node tfreq.js src\              :: token/operator-role frequencies over a tree
 node tfind.js -u 2 "PRINT?rawJob=true" "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"

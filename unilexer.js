@@ -860,6 +860,8 @@ class UniLexer {
   //                  shortcodes inside are code. Closed by the same fence
   //                  char at least as long (CommonMark); unclosed runs to EOF
   //   shortcodes     {{< name args >}} / {{% … %}} inline: sc.name { args };
+  //                  without arguments ({{< pagebreak >}}) one complete '/'
+  //                  token, sc.pagebreak;
   //                  `inline code` and escaped {{{< … >}}} are skipped; no
   //                  closer on the line: an unclosed opener, the rest is text
   //
@@ -919,8 +921,17 @@ class UniLexer {
           const nameEnd = k + m[0].length;
           const cEnd = src.indexOf(kind === '<' ? '>}}' : '%}}', nameEnd);
           textOrWs(t, k);
+          const closed = cEnd !== -1 && cEnd + 3 <= b;
+          if (closed && /^\s*$/.test(src.slice(nameEnd, cEnd))) {
+            // no arguments: complete on its own — ONE self-linked '/' token
+            // spanning the whole shortcode, like <br/> (prints sc.name;)
+            const idx = emit(0x2F, KLASS.TAG, name, k, depth);
+            link(idx, idx);
+            t = k = cEnd + 3;
+            continue;
+          }
           const idx = emit(0x7B, KLASS.TAG, name, k, depth);
-          if (cEnd === -1 || cEnd + 3 > b) { t = k = nameEnd; continue; }  // unclosed: rest is text
+          if (!closed) { t = k = nameEnd; continue; }            // unclosed: rest is text
           depth++; textOrWs(nameEnd, cEnd); depth--;
           link(idx, emit(0x7D, KLASS.TAG, name, cEnd, depth));
           t = k = cEnd + 3;
