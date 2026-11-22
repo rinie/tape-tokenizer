@@ -24,7 +24,7 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { KLASS, LANGS, langOfPath, tokenizeAs as tokenize } from './unilexer.js';
 
-const VERSION = '0.1.0';
+import { VERSION } from './version.js';
 
 const HELP = `tape-tokenizer tfind — zoom into a tape by content, not by depth (v${VERSION})
 

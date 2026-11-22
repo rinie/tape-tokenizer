@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { UniLexer, KLASS } from './unilexer.js';
 
-const VERSION = '0.1.0';
+import { VERSION } from './version.js';
 
 const HELP = `tape-tokenizer sfdiff — subforest diff (v${VERSION})
 

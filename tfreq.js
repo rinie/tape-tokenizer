@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { KLASS, KLASS_NAME, langOfPath, tokenizeAs } from './unilexer.js';
 import { OP_LITERAL } from './token-tags.js';
 
-const VERSION = '0.1.0';
+import { VERSION } from './version.js';
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.svn', '.hg', 'dist', 'build']);
 
 const HELP = `tape-tokenizer tfreq — token frequencies for byte-allocation tuning (v${VERSION})
