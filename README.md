@@ -21,6 +21,11 @@ grammared into an AST.
   (`<p>`, `<li>`, `<td>`, `<head>`, …) are closed implicitly by zero-width `~`
   tokens, void elements need no close, and `<script>`/`<style>` hold text.
   Only an end tag that was really required is reported.
+- **Quarto Markdown's block structure (prototype).** In `.qmd` files,
+  sections (`#`…`######`, ended by the next heading as `~`), fenced divs
+  (`:::`), code cells and code blocks (raw bodies), shortcodes
+  (`{{< … >}}`) and front matter go on the same tape; a stray or unclosed
+  `:::` or fence is a finding, never a refusal. Inline Markdown stays text.
 - **Per-language lexical tables.** JS, C, Python, XML, HTML. The scanner is
   language-agnostic; the swappable table is the only thing that changes. Tables
   can be **harvested** from real TextMate grammars (`harvest.js`).
@@ -56,6 +61,10 @@ node tdump.js --outline 3 samples\sample.html
 node tdump.js --outline 3 --clike samples\sample.xml
                                 :: the same tree C-like: catalog { … }, br;, "text"
                                 :: (omitted end tags as li ~ … ~, &amp; shown as &)
+node tdump.js --outline 99 --clike samples\sample.qmd
+                                :: Quarto: h1 ~ … ~ sections, div.callout-note { … },
+                                :: cell.r { … }, sc.include { … }; a stray ':::'
+                                :: shows as } ::: …?
 node tfreq.js src\              :: token/operator-role frequencies over a tree
 node tfind.js -u 2 "PRINT?rawJob=true" "openapi-exploration\transsmart\Transsmart APIv2.postman_collection.json"
                                 :: zoom by CONTENT instead of depth — breadcrumb of
@@ -94,8 +103,9 @@ tfind.js             zoom into a tape by CONTENT, not depth: breadcrumb of
 unilexer.js          ONE lexer, ONE tape: value pools + structural links in a
                      single pass; tag byte IS the mnemonic
                      (JS, XML, HTML, Rust, Oracle SQL/PLSQL, Python, YAML,
-                     JSON5 [also accepts plain JSON] — Python/YAML via the
-                     indentation bracket family :{ }: )
+                     JSON5 [also accepts plain JSON], Quarto qmd [block
+                     structure] — Python/YAML via the indentation
+                     bracket family :{ }: )
 valuetape.js         §13b spike (historical; superseded by unilexer.js)
 mergegate.js         §13c spike: scanner as a structure-aware merge gate
 sfdiff.js            subforest diff — compare versions as whole top-level units
