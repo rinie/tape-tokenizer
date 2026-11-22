@@ -334,6 +334,12 @@ test('qmd: lists — siblings, nesting at the content column, ends with ~', () =
     ['{ ol', '{ li', '{ code', '} code', '~ li', '~ ol']);
   // a thematic break is not a list
   assert.deepEqual(qmdTags('* * *\n').out, []);
+  // the rest of a marker line is a block of its own (quarto-web's list
+  // tables: '- - ``` markdown', '  - ::: pad-to-code-block')
+  const lt = qmdTags('- - ```md\n    ::: x\n    ```\n  - ::: pad\n\n    ::: a\n    :::\n\n    :::\n');
+  assert.deepEqual(lt.out, ['{ ul', '{ li', '{ ul', '{ li', '{ code.md', '} code.md', '~ li', '{ li',
+    '{ div.pad', '{ div.a', '} div.a', '} div.pad', '~ li', '~ ul', '~ li', '~ ul']);
+  assert.deepEqual(lt.findings, []);
 });
 
 test('qmd: pipe tables are [ rows [ cells ] ] with zero-width brackets', () => {

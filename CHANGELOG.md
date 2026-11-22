@@ -26,6 +26,20 @@ shortcodes — tolerantly, where Quarto 2's own parser is strict; #66–#67:
 docs, complete argument-less shortcodes), cut as **v0.8.0**. After it, qmd
 lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69).
 
+## Unreleased — qmd: a list item's line is a block of its own
+
+- Quarto's `docs/authoring/markdown-basics.qmd` reported five stray `:::`.
+  Its list-tables write `- - ``` markdown` and `  - ::: pad-to-code-block`:
+  after a marker, #69 treated the rest of the line as text, so a div opened
+  there was never opened and its `:::` closer looked stray (a nested marker
+  or a fence on the same line was missed the same way).
+- The per-line dispatch is now one `block(cs, ce, next, col)` function, and
+  a marker re-enters it for the rest of its line at the item's content
+  column — nested marker, div, fence, heading. markdown-basics.qmd: no
+  findings, lossless; its list-tables nest as `ul ~ li ~ ul ~ li ~
+  code.markdown { … }`.
+- Still text there: the page's grid tables (`+---+` boxes).
+
 ## PR #69 — qmd: lists and pipe tables · 2026-11-22
 
 - **Lists**: `- ` / `* ` / `+ ` open `ul`, `1. ` / `1) ` `ol`, every marker
