@@ -340,6 +340,11 @@ test('qmd: lists — siblings, nesting at the content column, ends with ~', () =
   assert.deepEqual(lt.out, ['{ ul', '{ li', '{ ul', '{ li', '{ code.md', '} code.md', '~ li', '{ li',
     '{ div.pad', '{ div.a', '} div.a', '} div.pad', '~ li', '~ ul', '~ li', '~ ul']);
   assert.deepEqual(lt.findings, []);
+  // a sibling at the outer item's content column: '- a' at 4 opened an item
+  // whose content is at 6; '- b' at 4 is measured from the outer item (4),
+  // not that inner one (quarto-web tables.qmd)
+  assert.deepEqual(qmdTags('- x\n  - y:\n\n    - a\n    - b\n').out,
+    ['{ ul', '{ li', '{ ul', '{ li', '{ ul', '{ li', '~ li', '{ li', '~ li', '~ ul', '~ li', '~ ul', '~ li', '~ ul']);
 });
 
 test('qmd: pipe tables are [ rows [ cells ] ] with zero-width brackets', () => {

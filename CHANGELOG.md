@@ -28,6 +28,20 @@ lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69), a list
 item's line as a block of its own (#71), grid tables in the same layout
 (#72), and an outline fix for a table right after a tag (#73).
 
+## Unreleased — qmd: a sibling item after a nested one
+
+- Quarto's `docs/authoring/tables.qmd` (a list table) has `  - Count
+  items:` then `    - Works on lists` / `    - Works on strings`: the
+  second item came out as text inside the first. Block indent (≤ 3) was
+  measured from the innermost open item — `Works on lists`, content at 6 —
+  so `- Works on strings` at 4 was "indented −2", not a block line, and
+  was never seen as a marker.
+- A line's indent is now measured from the innermost open item it can
+  belong to (content column ≤ its column): the outer item, at 4. tables.qmd
+  outlines as `ul ~ li ~ "Works on lists" ~ li ~ "Works on strings" ~ ~`,
+  lossless, no findings; callouts.qmd, markdown-basics.qmd and sample.qmd
+  outline unchanged.
+
 ## PR #73 — tdump: a qmd table right after a tag keeps its brackets · 2026-11-22
 
 - `tdump --outline` skips a start tag's attribute tokens, up to the next
