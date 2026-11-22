@@ -897,6 +897,8 @@ class UniLexer {
     const stack = [];   // open divs/sections/lists/items: { idx, name, kind, … }
     let depth = 0;
     let prevBlank = true;   // the previous line was blank (or none)
+    let rawBlank = false;   // … and blank outside any quote too (ends quotes)
+    let lineQ = 0;          // '>' marks seen so far on this line
 
     const ws = (from, to) => {
       if (to > from) this._emitWs((tg, lx, of, d) => emit(tg, KLASS.WS, lx, of, d), src, from, to, depth);
@@ -1065,12 +1067,30 @@ class UniLexer {
       }
     }
 
+    // block quotes: the open ones, innermost last
+    const quotesOpen = () => stack.reduce((a, e, k) => (e.kind === 'quote' && a.push(k), a), []);
+    const closeDownTo = (off, s) => { while (stack.length > s) closeTop(off, TAG_IMPLIED); };
+    // the '>' marks and blanks of a quote prefix [a,b)
+    const marks = (a, b) => {
+      let t = a;
+      for (let k = a; k < b; k++) {
+        if (src.charCodeAt(k) !== 0x3E) continue;
+        ws(t, k);
+        emit(0x3E, KLASS.PUNCT, '>', k, depth);
+        t = k + 1;
+      }
+      ws(t, b);
+    };
+    // a line that ends an open quote's paragraph instead of lazily continuing it
+    const LAZY_STOP = /^(?:[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$)|<!--|\+[-=:])/;
+
     // One block line from cs (its content start) to ce at column col: what
     // it is, which lists it ends, and its tokens. Returns where scanning
     // resumes. Re-entered for the rest of a list-item line.
     const block = (cs, ce, next, col) => {
       const content = src.slice(cs, ce);
       const small = col - baseFor(col) <= 3;                     // block indent, item-relative
+      if (small && src.charCodeAt(cs) === 0x3E) return quoteLine(cs, ce, next, col);
 
       // what this line is decides which lists it ends (a lazy text line
       // continues the item's paragraph)
@@ -1101,27 +1121,40 @@ class UniLexer {
         else lang = 'code';
         const idx = emit(0x7B, KLASS.TAG, lang, cs, depth);
         depth++;
-        const closeRe = new RegExp(`^[ \\t]{0,${itemBase() + 3}}${m[1][0] === '`' ? '`' : '~'}{${m[1].length},}[ \\t]*$`);
+        // in a block quote every body line carries the quote's '>' marks; a
+        // line without them ends the quote, and the fence with it
+        const qPre = lineQ ? `(?:[ \\t]{0,3}>[ \\t]?){${lineQ}}` : '';
+        const inQuote = new RegExp(`^${qPre}`);
+        const closeRe = new RegExp(`^${qPre}[ \\t]{0,${itemBase() + 3}}${m[1][0] === '`' ? '`' : '~'}{${m[1].length},}[ \\t]*$`);
         let p = next;
         let closeAt = -1;
+        let lastCe = ce;
         while (p < len) {
           const l = lineAt(p);
-          if (closeRe.test(src.slice(p, l.ce))) { closeAt = p; break; }
+          const lt = src.slice(p, l.ce);
+          if (lineQ && !inQuote.test(lt)) break;
+          if (closeRe.test(lt)) { closeAt = p; break; }
+          lastCe = l.ce;
           p = l.next;
         }
+        const quoteEnded = closeAt === -1 && lineQ > 0 && p < len;
         const bodyStart = Math.min(ce + (src.charCodeAt(ce) === 0x0D ? 2 : 1), len);
-        ws(ce, bodyStart);
-        const bodyEnd = closeAt === -1 ? len : closeAt;
+        const bodyEnd = closeAt !== -1 ? closeAt : quoteEnded ? lastCe : len;
+        if (bodyEnd > ce) ws(ce, bodyStart);
         if (bodyEnd > bodyStart) {
           const body = src.slice(bodyStart, bodyEnd);
           if (/^\s+$/.test(body)) ws(bodyStart, bodyEnd);
           else emit(0x54, KLASS.TEXT, body, bodyStart, depth);
         }
         depth--;
+        if (quoteEnded) {                                        // ends with its quote: ~
+          link(idx, emit(TAG_IMPLIED, KLASS.TAG, lang, lastCe, depth));
+          return lastCe;
+        }
         if (closeAt === -1) return len;                          // unclosed: link stays -1
         const l = lineAt(closeAt);
-        const fenceOff = closeAt + /^[ \t]*/.exec(src.slice(closeAt, l.ce))[0].length;
-        ws(closeAt, fenceOff);
+        const fenceOff = closeAt + new RegExp(`^${qPre}[ \\t]*`).exec(src.slice(closeAt, l.ce))[0].length;
+        marks(closeAt, fenceOff);
         link(idx, emit(0x7D, KLASS.TAG, lang, fenceOff, depth));
         return l.ce;
       }
@@ -1248,11 +1281,33 @@ class UniLexer {
       return ce;
     };
 
+    // A '>' mark at cs: it opens a block quote, or continues the open one at
+    // this depth; the rest of the line is a block of its own inside it.
+    const quoteLine = (cs, ce, next, col) => {
+      lineQ++;
+      if (lineQ <= quotesOpen().length) emit(0x3E, KLASS.PUNCT, '>', cs, depth);
+      else {
+        endLists(cs, col, null, false);
+        const idx = emit(0x7B, KLASS.TAG, 'blockquote', cs, depth);   // spans its '>'
+        stack.push({ idx, name: 'blockquote', kind: 'quote' });
+        depth++;
+      }
+      let r = cs + 1;
+      while (r < ce && (src.charCodeAt(r) === 0x20 || src.charCodeAt(r) === 0x09)) r++;
+      ws(cs + 1, r);
+      if (r >= ce || src.charCodeAt(r) !== 0x3E) {               // the last mark: deeper quotes end
+        const deeper = quotesOpen()[lineQ];
+        if (deeper !== undefined) closeDownTo(r, deeper);
+      }
+      if (r >= ce) { prevBlank = true; return ce; }              // '>' alone: blank inside the quote
+      return block(r, ce, next, col + colOf(src.slice(cs, r)));
+    };
+
     while (i < len) {
       const c0 = src.charCodeAt(i);
       if (c0 === 0x0A || c0 === 0x0D) {                          // newline run
         let j = i; while (j < len && (src.charCodeAt(j) === 0x0A || src.charCodeAt(j) === 0x0D)) j++;
-        if ((src.slice(i, j).match(/\n/g) || []).length > 1) prevBlank = true;
+        if ((src.slice(i, j).match(/\n/g) || []).length > 1) prevBlank = rawBlank = true;
         ws(i, j); i = j; continue;
       }
       const { ce, next } = lineAt(i);
@@ -1261,7 +1316,13 @@ class UniLexer {
       const cs = i + ind;
       const content = line.slice(ind);
       ws(i, cs);
-      if (!content) { prevBlank = true; i = ce; continue; }      // blank line
+      if (!content) { prevBlank = rawBlank = true; i = ce; continue; }   // blank line
+      // open quotes end at a blank line, or at a line without '>' that is
+      // not a lazy continuation of their paragraph
+      lineQ = 0;
+      const q = quotesOpen();
+      if (q.length && (rawBlank || (content[0] !== '>' && (prevBlank || LAZY_STOP.test(content) || THEMATIC.test(content))))) closeDownTo(cs, q[0]);
+      rawBlank = false;
       i = block(cs, ce, next, colOf(line.slice(0, ind)));
     }
 

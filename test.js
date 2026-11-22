@@ -350,6 +350,24 @@ test('qmd: lists — siblings, nesting at the content column, ends with ~', () =
     ['{ ul', '{ li', '{ ul', '{ li', '{ ul', '{ li', '~ li', '{ li', '~ li', '~ ul', '~ li', '~ ul', '~ li', '~ ul']);
 });
 
+test('qmd: block quotes nest, hold blocks, end with ~', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  // a lazy line continues the quote; a blank line ends it
+  assert.deepEqual(view('> A\nlazy\n\nafter\n'), ['blockquote ~', '  "A"', '  "lazy"', '~', '"after"']);
+  // nested quotes; a blank '>' line ends the inner one
+  assert.deepEqual(view('> > a\n>\n> b\n'), ['blockquote ~', '  blockquote ~', '    "a"', '  ~', '  "b"', '~']);
+  // a list inside: its items go on across '>' lines
+  assert.deepEqual(qmdTags('> - a\n> - b\n').out, ['{ blockquote', '{ ul', '{ li', '~ li', '{ li', '~ li', '~ ul', '~ blockquote']);
+  // a fence inside closes on a '>' line; one cut off by the quote's end is ~
+  assert.deepEqual(qmdTags('> ```r\n> 1\n> ```\n').out, ['{ blockquote', '{ code.r', '} code.r', '~ blockquote']);
+  const cut = qmdTags('> ```r\n> 1\n\nafter\n');
+  assert.deepEqual(cut.out, ['{ blockquote', '{ code.r', '~ code.r', '~ blockquote']);
+  assert.deepEqual(cut.findings, []);
+  // in a list item: the item goes on after the quote
+  assert.deepEqual(view('- i\n\n  > q\n\n  back\n'),
+    ['ul ~', '  li ~', '    "i"', '    blockquote ~', '      "q"', '    ~', '    "back"', '  ~', '~']);
+});
+
 test('qmd: pipe tables are [ rows [ cells ] ] with zero-width brackets', () => {
   const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
   assert.deepEqual(view('| a | b |\n|---|:-:|\n| 1 |   |\n\nafter\n'),
