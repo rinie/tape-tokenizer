@@ -1042,21 +1042,11 @@ class UniLexer {
       }
     }
 
-    while (i < len) {
-      const c0 = src.charCodeAt(i);
-      if (c0 === 0x0A || c0 === 0x0D) {                          // newline run
-        let j = i; while (j < len && (src.charCodeAt(j) === 0x0A || src.charCodeAt(j) === 0x0D)) j++;
-        if ((src.slice(i, j).match(/\n/g) || []).length > 1) prevBlank = true;
-        ws(i, j); i = j; continue;
-      }
-      const { ce, next } = lineAt(i);
-      const line = src.slice(i, ce);
-      const ind = /^[ \t]*/.exec(line)[0].length;
-      const cs = i + ind;
-      const content = line.slice(ind);
-      ws(i, cs);
-      if (!content) { prevBlank = true; i = ce; continue; }      // blank line
-      const col = colOf(line.slice(0, ind));
+    // One block line from cs (its content start) to ce at column col: what
+    // it is, which lists it ends, and its tokens. Returns where scanning
+    // resumes. Re-entered for the rest of a list-item line.
+    const block = (cs, ce, next, col) => {
+      const content = src.slice(cs, ce);
       const rel = col - itemBase();
       const small = col <= 3 || (rel >= 0 && rel <= 3);          // block indent, item-relative
 
@@ -1075,7 +1065,7 @@ class UniLexer {
         const end = e === -1 ? len : e + 3;
         const cmt = src.slice(cs, end);
         emit(cmt.includes('\n') ? TAG_COMMENT_ML : TAG_COMMENT, KLASS.COMMENT, cmt, cs, depth);
-        i = end; continue;
+        return end;
       }
       let m;
       if (small && (m = /^(`{3,}|~{3,})[ \t]*(.*)$/.exec(content)) && !(m[1][0] === '`' && m[2].includes('`'))) {
@@ -1104,12 +1094,12 @@ class UniLexer {
           else emit(0x54, KLASS.TEXT, body, bodyStart, depth);
         }
         depth--;
-        if (closeAt === -1) { i = len; continue; }               // unclosed: link stays -1
+        if (closeAt === -1) return len;                          // unclosed: link stays -1
         const l = lineAt(closeAt);
         const fenceOff = closeAt + /^[ \t]*/.exec(src.slice(closeAt, l.ce))[0].length;
         ws(closeAt, fenceOff);
         link(idx, emit(0x7D, KLASS.TAG, lang, fenceOff, depth));
-        i = l.ce; continue;
+        return l.ce;
       }
       if (small && (m = /^:{3,}[ \t]*(.*?)[ \t]*$/.exec(content))) {
         const rest = m[1];
@@ -1133,7 +1123,7 @@ class UniLexer {
             closeTop(cs, 0x7D);
           }
         }
-        i = ce; continue;
+        return ce;
       }
       if (small && (m = /^(#{1,6})(?:[ \t]+|$)/.exec(content))) {
         const level = m[1].length;
@@ -1142,7 +1132,7 @@ class UniLexer {
         stack.push({ idx, name: `h${level}`, kind: 'section', level });
         depth++;
         inline(cs + m[0].length, ce);
-        i = ce; continue;
+        return ce;
       }
       if (mk) {
         // a sibling continues the open list; anything else opens one
@@ -1160,8 +1150,10 @@ class UniLexer {
         const idx = emit(0x7B, KLASS.TAG, 'li', cs, depth);
         stack.push({ idx, name: 'li', kind: 'item', contentCol });
         depth++;
-        inline(cs + mk.m[0].length, ce);
-        i = ce; continue;
+        // the rest of the line is a block of its own at the content column
+        // (- - nested, - ::: div, - ``` fence)
+        const restAt = cs + mk.m[0].length;
+        return restAt < ce ? block(restAt, ce, next, contentCol) : ce;
       }
       if (tableHead) {
         const tIdx = emit(0x5B, KLASS.BRACKET, '', cs, depth);   // the table: [ rows ]
@@ -1185,10 +1177,27 @@ class UniLexer {
         }
         depth--;
         link(tIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
-        i = lastCe; continue;
+        return lastCe;
       }
       inline(cs, ce);
-      i = ce;
+      return ce;
+    };
+
+    while (i < len) {
+      const c0 = src.charCodeAt(i);
+      if (c0 === 0x0A || c0 === 0x0D) {                          // newline run
+        let j = i; while (j < len && (src.charCodeAt(j) === 0x0A || src.charCodeAt(j) === 0x0D)) j++;
+        if ((src.slice(i, j).match(/\n/g) || []).length > 1) prevBlank = true;
+        ws(i, j); i = j; continue;
+      }
+      const { ce, next } = lineAt(i);
+      const line = src.slice(i, ce);
+      const ind = /^[ \t]*/.exec(line)[0].length;
+      const cs = i + ind;
+      const content = line.slice(ind);
+      ws(i, cs);
+      if (!content) { prevBlank = true; i = ce; continue; }      // blank line
+      i = block(cs, ce, next, colOf(line.slice(0, ind)));
     }
 
     // EOF ends every open section and list; a div still open stays unclosed
