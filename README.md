@@ -157,7 +157,7 @@ ride on layer 2.
 
 ## Status
 
-Version **0.8.0** (`node tdump.js --version`; every tool reports the
+Version **0.9.0** (`node tdump.js --version`; every tool reports the
 `package.json` version). Working prototype, JavaScript, no dependencies
 (Node 18+ for `node:util` `parseArgs`; `package.json` marks the `.js` files
 as ESM). `npm test` runs
