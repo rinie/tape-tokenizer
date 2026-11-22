@@ -141,6 +141,12 @@ TAG_CLASS_XML[T.STRING_SQ] = KLASS.STRING;      // '  attribute values
 TAG_CLASS_XML[T.IDENT] = KLASS.IDENT;           // I  attribute names
 TAG_CLASS_XML[T.OP] = KLASS.OP;                 // =
 
+// qmd rides the XML table plus zero-width table brackets: a pipe table is
+// '[' rows ']', a row '[' cells ']' (never an XML byte — XML keeps '[' punct)
+const TAG_CLASS_QMD = TAG_CLASS_XML.slice();
+TAG_CLASS_QMD[0x5B] = KLASS.BRACKET;
+TAG_CLASS_QMD[0x5D] = KLASS.BRACKET;
+
 // ── SQL / PL-SQL mode ─────────────────────────────────────────────────────────
 // PL/SQL's block keywords are the XML name-matched tag family wearing keyword
 // clothes: IF / LOOP / CASE / BEGIN open as '{' with the KIND as the interned
@@ -866,16 +872,31 @@ class UniLexer {
   //                  closer on the line: an unclosed opener, the rest is text
   //
   //   comments       a line starting '<!--' opens a comment through '-->'
+  //   lists          '- ' / '* ' / '+ ' open ul, '1. ' / '1) ' ol, each
+  //                  marker an li; like HTML's <li> nothing closes them in
+  //                  the source, so they end with '~': at the next sibling
+  //                  marker, or at a line less indented than the item's
+  //                  content after a blank line (or a block that is not
+  //                  text). A marker at the content column nests; a lazy
+  //                  continuation line (no blank before) stays in the item.
+  //                  Blocks inside an item are measured from its content
+  //                  column (a fence indented under '- ' is a fence).
+  //   pipe tables    a '|' line over a '|---|:--:|' delimiter row, then '|'
+  //                  rows: the table is '[' rows ']', a row '[' cells ']' —
+  //                  ZERO-WIDTH brackets (rows are line-delimited, like the
+  //                  indentation family), cells TEXT (an empty cell a
+  //                  zero-width TEXT, so columns stay aligned); the pipes and
+  //                  the delimiter row are punct
   //
-  // Not handled (text): setext headings, block quotes and list items as
-  // containers (a fence indented 4+ is not recognised), other raw HTML,
-  // indented code blocks.
+  // Not handled (text): setext headings, block quotes, grid/simple tables,
+  // fancy list markers (a. i. #.), other raw HTML, indented code blocks.
   tokenizeQmd(src) {
     const tp = this._tape();
     const { emit, link } = tp;
     const len = src.length;
-    const stack = [];   // open divs/sections: { idx, name, kind, level }
+    const stack = [];   // open divs/sections/lists/items: { idx, name, kind, … }
     let depth = 0;
+    let prevBlank = true;   // the previous line was blank (or none)
 
     const ws = (from, to) => {
       if (to > from) this._emitWs((tg, lx, of, d) => emit(tg, KLASS.WS, lx, of, d), src, from, to, depth);
@@ -946,6 +967,68 @@ class UniLexer {
       const ce = le > p && src.charCodeAt(le - 1) === 0x0D ? le - 1 : le;
       return { ce, next: Math.min(le + 1, len) };
     };
+    const colOf = (s) => {                                       // indent width, tab = to next 4
+      let col = 0;
+      for (const ch of s) col = ch === '\t' ? col + 4 - (col % 4) : col + 1;
+      return col;
+    };
+    // the content column of the innermost open list item (0 outside lists)
+    const itemBase = () => {
+      for (let s = stack.length - 1; s >= 0; s--) if (stack[s].kind === 'item') return stack[s].contentCol;
+      return 0;
+    };
+    // a line at column col ends the list items / lists it is not part of
+    const endLists = (off, col, mk, lazy) => {
+      for (;;) {
+        const top = stack[stack.length - 1];
+        if (!top) return;
+        if (top.kind === 'item') {
+          if (col >= top.contentCol || lazy) return;           // its content / a lazy line
+          closeTop(off, TAG_IMPLIED);
+        } else if (top.kind === 'list') {
+          if (mk && mk.type === top.name && col >= top.markerCol) return;   // a sibling item
+          closeTop(off, TAG_IMPLIED);
+        } else return;                                         // lists never end a div/section
+      }
+    };
+    const LIST_MARKER = /^([-*+]|\d{1,9}[.)])([ \t]+|$)/;
+    const THEMATIC = /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+    const TABLE_DELIM = /^\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+    // pipe positions in [a,b): not escaped, not inside `code`
+    const pipesIn = (a, b) => {
+      const out = [];
+      for (let k = a; k < b; k++) {
+        const ch = src.charCodeAt(k);
+        if (ch === 0x5C) { k++; continue; }
+        if (ch === 0x60) {
+          let r = k; while (r < b && src.charCodeAt(r) === 0x60) r++;
+          const c = src.indexOf(src.slice(k, r), r);
+          k = c !== -1 && c < b ? c + (r - k) - 1 : r - 1;
+          continue;
+        }
+        if (ch === 0x7C) out.push(k);
+      }
+      return out;
+    };
+    // one table row [a,b): zero-width '[' … ']' around its cells
+    const tableRow = (a, b) => {
+      const idx = emit(0x5B, KLASS.BRACKET, '', a, depth);
+      depth++;
+      const pipes = pipesIn(a, b);
+      const bounds = [a - 1, ...pipes, b];
+      for (let s = 0; s + 1 < bounds.length; s++) {
+        const x = bounds[s] + 1;
+        const y = bounds[s + 1];
+        const blank = src.slice(x, y).trim() === '';
+        const edge = (s === 0 && pipes.length && blank) || (s + 2 === bounds.length && pipes.length && blank);
+        if (edge) ws(x, y);                                    // outside a leading/trailing pipe
+        else if (blank) { ws(x, y); emit(0x54, KLASS.TEXT, '', y, depth); }   // empty cell
+        else inline(x, y);
+        if (s + 2 < bounds.length) emit(0x7C, KLASS.PUNCT, '|', y, depth);
+      }
+      depth--;
+      link(idx, emit(0x5D, KLASS.BRACKET, '', b, depth));
+    };
 
     let i = 0;
     // front matter: '---' on the first line, closed by '---' or '...'
@@ -963,6 +1046,7 @@ class UniLexer {
       const c0 = src.charCodeAt(i);
       if (c0 === 0x0A || c0 === 0x0D) {                          // newline run
         let j = i; while (j < len && (src.charCodeAt(j) === 0x0A || src.charCodeAt(j) === 0x0D)) j++;
+        if ((src.slice(i, j).match(/\n/g) || []).length > 1) prevBlank = true;
         ws(i, j); i = j; continue;
       }
       const { ce, next } = lineAt(i);
@@ -971,7 +1055,20 @@ class UniLexer {
       const cs = i + ind;
       const content = line.slice(ind);
       ws(i, cs);
-      const small = ind <= 3;
+      if (!content) { prevBlank = true; i = ce; continue; }      // blank line
+      const col = colOf(line.slice(0, ind));
+      const rel = col - itemBase();
+      const small = col <= 3 || (rel >= 0 && rel <= 3);          // block indent, item-relative
+
+      // what this line is decides which lists it ends (a lazy text line
+      // continues the item's paragraph)
+      const mk0 = small && !THEMATIC.test(content) && LIST_MARKER.exec(content);
+      const mk = mk0 ? { m: mk0, type: /\d/.test(mk0[1]) ? 'ol' : 'ul' } : null;
+      const nextLine = next < len ? src.slice(next, lineAt(next).ce).trim() : '';
+      const tableHead = small && !mk && content.includes('|') && nextLine.includes('|') && TABLE_DELIM.test(nextLine);
+      const structural = mk || tableHead || (small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content));
+      endLists(cs, col, mk, !structural && !prevBlank);
+      prevBlank = false;
 
       if (small && content.startsWith('<!--')) {                // HTML comment block:
         const e = src.indexOf('-->', cs + 4);                    // ':::' inside is prose
@@ -990,7 +1087,7 @@ class UniLexer {
         else lang = 'code';
         const idx = emit(0x7B, KLASS.TAG, lang, cs, depth);
         depth++;
-        const closeRe = new RegExp(`^ {0,3}${m[1][0] === '`' ? '`' : '~'}{${m[1].length},}[ \\t]*$`);
+        const closeRe = new RegExp(`^[ \\t]{0,${itemBase() + 3}}${m[1][0] === '`' ? '`' : '~'}{${m[1].length},}[ \\t]*$`);
         let p = next;
         let closeAt = -1;
         while (p < len) {
@@ -1009,7 +1106,7 @@ class UniLexer {
         depth--;
         if (closeAt === -1) { i = len; continue; }               // unclosed: link stays -1
         const l = lineAt(closeAt);
-        const fenceOff = closeAt + /^ */.exec(src.slice(closeAt, l.ce))[0].length;
+        const fenceOff = closeAt + /^[ \t]*/.exec(src.slice(closeAt, l.ce))[0].length;
         ws(closeAt, fenceOff);
         link(idx, emit(0x7D, KLASS.TAG, lang, fenceOff, depth));
         i = l.ce; continue;
@@ -1047,17 +1144,60 @@ class UniLexer {
         inline(cs + m[0].length, ce);
         i = ce; continue;
       }
+      if (mk) {
+        // a sibling continues the open list; anything else opens one
+        const top = stack[stack.length - 1];
+        if (!top || top.kind !== 'list') {
+          const idx = emit(0x7B, KLASS.TAG, mk.type, cs, depth);  // zero-width: the li follows
+          stack.push({ idx, name: mk.type, kind: 'list', markerCol: col });
+          depth++;
+        }
+        const marker = mk.m[1].length;
+        const gap = mk.m[2] ? colOf(mk.m[2]) : 0;
+        // content starts after the marker and its spaces (5+ spaces: the
+        // item's content is indented code, so one space counts)
+        const contentCol = col + marker + (gap === 0 || gap > 4 ? 1 : gap);
+        const idx = emit(0x7B, KLASS.TAG, 'li', cs, depth);
+        stack.push({ idx, name: 'li', kind: 'item', contentCol });
+        depth++;
+        inline(cs + mk.m[0].length, ce);
+        i = ce; continue;
+      }
+      if (tableHead) {
+        const tIdx = emit(0x5B, KLASS.BRACKET, '', cs, depth);   // the table: [ rows ]
+        depth++;
+        tableRow(cs, ce);
+        let lastCe = ce;
+        let p = next;
+        let first = true;                                        // the delimiter row
+        while (p < len) {
+          const l = lineAt(p);
+          const rowInd = /^[ \t]*/.exec(src.slice(p, l.ce))[0].length;
+          const rcs = p + rowInd;
+          const row = src.slice(rcs, l.ce);
+          if (!first && (!row.includes('|') || !row.trim())) break;
+          ws(lastCe, rcs);                                       // newline + indent
+          if (first) emit(0x2D, KLASS.PUNCT, row, rcs, depth);   // |---|:--:| — punct
+          else tableRow(rcs, l.ce);
+          first = false;
+          lastCe = l.ce;
+          p = l.next;
+        }
+        depth--;
+        link(tIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
+        i = lastCe; continue;
+      }
       inline(cs, ce);
       i = ce;
     }
 
-    // EOF ends every open section; a div still open stays unclosed (-1)
+    // EOF ends every open section and list; a div still open stays unclosed
     while (stack.length) {
-      if (stack[stack.length - 1].kind === 'section') closeTop(len, TAG_IMPLIED);
+      if (stack[stack.length - 1].kind !== 'div') closeTop(len, TAG_IMPLIED);
       else { stack.pop(); depth = depth > 0 ? depth - 1 : 0; }
     }
 
-    return tp.finish(this, src, TAG_CLASS_XML, true);
+    return tp.finish(this, src, TAG_CLASS_QMD, true);
   }
 
   // Split a whitespace run [from,to) into NEWLINE tokens (TAG_NL — each

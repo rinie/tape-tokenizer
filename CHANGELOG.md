@@ -25,6 +25,30 @@ docs and an entity-bearing HTML sample). Then a first **Markdown** step
 shortcodes — tolerantly, where Quarto 2's own parser is strict; #66–#67:
 docs, complete argument-less shortcodes), cut as **v0.8.0**.
 
+## Unreleased — qmd: lists and pipe tables
+
+- **Lists**: `- ` / `* ` / `+ ` open `ul`, `1. ` / `1) ` `ol`, every marker
+  an `li`. Nothing in the source closes them (HTML's `<li>` again), so they
+  end with `~`: at the next sibling marker, or at a line less indented than
+  the item's content after a blank line or that starts another block. A
+  marker at the content column nests; a lazy continuation line stays in the
+  item; a thematic break (`* * *`) is not a list. Blocks inside an item are
+  measured from its content column, so a fence indented under `1.  ` is a
+  fence (the old "indented 4+" limit is gone inside lists).
+- **Pipe tables** take a `[]` layout: a `|` line over a `|---|:--:|`
+  delimiter row opens `[`, each row is `[` cells `]`. The brackets are
+  ZERO-WIDTH — rows are line-delimited, nothing in the source closes them,
+  the same call as Python's `:{ }:` indentation tokens — on a qmd class
+  table of its own (`TAG_CLASS_QMD`), so XML's `[` stays punct. Cells are
+  TEXT (shortcodes still recognised); an empty cell is a zero-width `""`,
+  so columns stay aligned; pipes, escaped `\|` and `|` inside `` `code` ``
+  are handled; the pipes and the delimiter row are punct (hidden).
+- Checked on Quarto's own `docs/authoring/callouts.qmd`: lossless, no
+  findings, its bullet lists and appearance table structured.
+  `samples/sample.qmd` gains a table and a nested list.
+- Still text: setext headings, block quotes, grid/simple tables, fancy list
+  markers (`a.`, `i.`, `#.`).
+
 ## v0.8.0 · 2026-11-22
 
 The first numbered version: everything below, through #67. `package.json`
