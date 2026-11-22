@@ -62,7 +62,8 @@ OPTIONS
                    drops trailing line-break whitespace and is shown with
                    character references decoded (&amp; -> &), except in
                    HTML <script>/<style>. qmd uses the same layout
-                   (h2 ~ … ~, div.callout-note { … }, cell.r { … }),
+                   (h2 ~ … ~, div.callout-note { … }, cell.r { … },
+                   ul ~ li ~ … ~ ~), pipe tables as [ rows [ cells ] ],
                    text undecoded.
   -l, --lang <l>   Force language: js | xml | html | rust | sql | py | yaml |
                    json5 | qmd. Default: detect from the file extension

@@ -322,6 +322,30 @@ test('qmd: front matter, comments, shortcodes (not in inline code, not escaped)'
   assert.ok([...Array(tp.length).keys()].some((t) => tp.classOf(t) === KLASS.COMMENT));
 });
 
+test('qmd: lists — siblings, nesting at the content column, ends with ~', () => {
+  assert.deepEqual(qmdTags('- a\n- b\n  - c\n  - d\n- e\n\ntext\n').out,
+    ['{ ul', '{ li', '~ li', '{ li', '{ ul', '{ li', '~ li', '{ li', '~ li', '~ ul', '~ li', '{ li', '~ li', '~ ul']);
+  // a lazy line stays in the item, an indented paragraph after a blank too;
+  // 1. and 2) are one ordered list, a bullet starts another list
+  assert.deepEqual(qmdTags('1. a\nlazy\n2) b\n\n   more\n- c\n').out,
+    ['{ ol', '{ li', '~ li', '{ li', '~ li', '~ ol', '{ ul', '{ li', '~ li', '~ ul']);
+  // blocks inside an item are measured from its content column
+  assert.deepEqual(qmdTags('1.  x\n\n    ```\n    a\n    ```\n').out,
+    ['{ ol', '{ li', '{ code', '} code', '~ li', '~ ol']);
+  // a thematic break is not a list
+  assert.deepEqual(qmdTags('* * *\n').out, []);
+});
+
+test('qmd: pipe tables are [ rows [ cells ] ] with zero-width brackets', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  assert.deepEqual(view('| a | b |\n|---|:-:|\n| 1 |   |\n\nafter\n'),
+    ['[', '  [', '    "a"', '    "b"', '  ]', '  [', '    "1"', '    ""', '  ]', ']', '"after"']);
+  // no outer pipes; an escaped pipe and a pipe in `code` are cell content
+  assert.deepEqual(view('a | b\n--|--\n`x|y` | c\\|d\nend\n'),
+    ['[', '  [', '    "a"', '    "b"', '  ]', '  [', '    "`x|y`"', '    "c\\\\|d"', '  ]', ']', '"end"']);
+  assert.deepEqual(qmdTags('| a |\n|---|\n').findings, []);
+});
+
 test('qmd: tdump --outline --clike and samples/sample.qmd', () => {
   assert.deepEqual(outlineView('# T\n::: note\nhi\n:::\n```{r}\n1\n```\n{{< pagebreak >}}\n', 'qmd', 99, { clike: true }).split('\n').slice(1),
     ['h1 ~', '  "T"', '  div.note {', '    "hi"', '  }', '  cell.r {', '    "1"', '  }', '  sc.pagebreak;', '~']);

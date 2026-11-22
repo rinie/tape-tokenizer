@@ -8,13 +8,23 @@ execute:
 <!-- qmd sample for the unilexer qmd mode: front matter, ATX sections that
      end implicitly, fenced divs (nested, with attributes), executable code
      cells and plain code blocks whose bodies hold fence- and shortcode-looking
-     text, and inline shortcodes. One seam is deliberate: a stray ':::' after
-     the summary div, closing nothing. -->
+     text, inline shortcodes, a pipe table and a nested list. One seam is
+     deliberate: a stray ':::' after the summary div, closing nothing. -->
 
 # Overview
 
 This report summarises the order totals. See {{< meta title >}} for the
 source, and `{{< not-a-shortcode >}}` inside inline code is just code.
+
+| Id | Amount |
+|---:|-------:|
+| 1  | 10.00  |
+| 2  | 25.50  |
+
+- two orders
+- one currency
+  1. EUR, rounded
+     to cents
 
 ::: {.callout-note appearance="minimal"}
 Totals are in EUR.
