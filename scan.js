@@ -13,7 +13,7 @@ import { parseArgs } from 'node:util';
 import { LexicalScanner, JS_TABLE, C_TABLE, PYTHON_TABLE, XML_TABLE, HTML_TABLE } from './lexical-scanner.js';
 import { analyze, defUseOutline, useBeforeDef } from './defuse.js';
 
-const VERSION = '0.1.0';
+import { VERSION } from './version.js';
 
 const TABLES = { c: C_TABLE, js: JS_TABLE, py: PYTHON_TABLE, xml: XML_TABLE, html: HTML_TABLE };
 const EXT_LANG = {

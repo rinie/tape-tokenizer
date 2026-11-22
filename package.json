@@ -1,6 +1,6 @@
 {
   "name": "tape-tokenizer",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Tolerant, positional, structural tape scanner for source code",
   "license": "MIT",

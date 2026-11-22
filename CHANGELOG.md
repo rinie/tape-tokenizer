@@ -1,7 +1,8 @@
 # Changelog
 
 Progress **and setbacks** across the project, by merged pull request. Dates are
-merge dates. This is a prototype log, not a SemVer release history — it records
+merge dates; version lines (`## v0.8.0`) mark where a numbered version was
+cut. This is a prototype log, not a SemVer release history — it records
 what was learned, including the wrong turns, in the spirit of the design's own
 "observe and report, nothing swallowed in silence."
 
@@ -21,9 +22,17 @@ outline** (#59–#62: `tdump --clike`, matching `~` for omitted end tags, text
 without layout whitespace and with character references decoded; #63–#64:
 docs and an entity-bearing HTML sample). Then a first **Markdown** step
 (#65: Quarto qmd block structure — sections, fenced divs, code cells,
-shortcodes — tolerantly, where Quarto 2's own parser is strict).
+shortcodes — tolerantly, where Quarto 2's own parser is strict; #66–#67:
+docs, complete argument-less shortcodes), cut as **v0.8.0**.
 
-## Unreleased — qmd: argument-less shortcodes are complete
+## v0.8.0 · 2026-11-22
+
+The first numbered version: everything below, through #67. `package.json`
+is the single source (`version.js` reads it), and every CLI tool's
+`--version` reports it — they all said `0.1.0` until now. Releases are
+marked here as `## vX.Y.Z` lines between the PR entries.
+
+## PR #67 — qmd: argument-less shortcodes are complete · 2026-11-22
 
 - `{{< pagebreak >}}` printed as an empty `sc.pagebreak {` … `}` block. A
   shortcode with no arguments is now ONE self-linked `/` token spanning the

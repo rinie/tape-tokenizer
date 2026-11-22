@@ -332,6 +332,14 @@ test('qmd: tdump --outline --clike and samples/sample.qmd', () => {
 
 console.log('\n── tools ──');
 
+test('every CLI tool reports the package.json version', () => {
+  const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+  for (const tool of ['scan.js', 'sfdiff.js', 'tdump.js', 'tfind.js', 'tfreq.js']) {
+    const r = spawnSync(process.execPath, [tool, '--version'], { encoding: 'utf8' });
+    assert.equal(r.stdout.trim(), version, tool);
+  }
+});
+
 test('mergeGate: an unterminated string in the merge is not safe', () => {
   const ours = 'function a() {\n  return "1";\n}\n';
   const theirs = 'function a() {\n  return "2";\n}\n';

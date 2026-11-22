@@ -111,6 +111,7 @@ mergegate.js         §13c spike: scanner as a structure-aware merge gate
 sfdiff.js            subforest diff — compare versions as whole top-level units
 tokenizer.js         the original flat value-token tape (historical; demo-only)
 token-tags.js        the mnemonic tag-byte scheme (shared by unilexer + tokenizer)
+version.js           the one version string (read from package.json)
 demos/               runnable demos for each piece (node demos/demo-*.js)
 samples/             real files used for validation (incl. a C TextMate grammar)
 openapi-exploration/ real-world OpenAPI/API specs (AGV services, a Transsmart
@@ -152,8 +153,10 @@ ride on layer 2.
 
 ## Status
 
-Working prototype, JavaScript, no dependencies (Node 18+ for `node:util`
-`parseArgs`; `package.json` marks the `.js` files as ESM). `npm test` runs
+Version **0.8.0** (`node tdump.js --version`; every tool reports the
+`package.json` version). Working prototype, JavaScript, no dependencies
+(Node 18+ for `node:util` `parseArgs`; `package.json` marks the `.js` files
+as ESM). `npm test` runs
 `validate.js` (tables vs real files) and `test.js` (regression assertions).
 Tables are linter-grade and tolerant, not a compiler. See the CHANGELOG for
 what's landed and what's still sketched.

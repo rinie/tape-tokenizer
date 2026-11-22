@@ -34,7 +34,7 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { KLASS, KLASS_NAME, LANGS, langOfPath, tokenizeAs as tokenize } from './unilexer.js';
 
-const VERSION = '0.1.0';
+import { VERSION } from './version.js';
 
 const HELP = `tape-tokenizer tdump — token dump with pool index/value pairs (v${VERSION})
 
