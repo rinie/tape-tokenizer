@@ -376,6 +376,12 @@ test('qmd: grid tables are the same [ rows [ cells ] ]; a row spans its | lines'
   assert.deepEqual(view('+---+\n| x |\n'), ['[', '  [', '    "x"', '  ]', ']']);
 });
 
+test('qmd outline: a table right after a tag keeps its [ (qmd tags have no attributes)', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  assert.deepEqual(view('::: x\n| a |\n|---|\n:::\n'), ['div.x {', '  [', '    [', '      "a"', '    ]', '  ]', '}']);
+  assert.deepEqual(view('{{< pagebreak >}}\n\n+---+\n| b |\n+---+\n'), ['sc.pagebreak;', '[', '  [', '    "b"', '  ]', ']']);
+});
+
 test('qmd: tdump --outline --clike and samples/sample.qmd', () => {
   assert.deepEqual(outlineView('# T\n::: note\nhi\n:::\n```{r}\n1\n```\n{{< pagebreak >}}\n', 'qmd', 99, { clike: true }).split('\n').slice(1),
     ['h1 ~', '  "T"', '  div.note {', '    "hi"', '  }', '  cell.r {', '    "1"', '  }', '  sc.pagebreak;', '~']);

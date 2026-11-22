@@ -288,6 +288,9 @@ function outlineView(src, lang, maxDepth, { clike = false } = {}) {
   const u = tokenize(src, lang);
   const n = u.length;
   const markup = lang === 'xml' || lang === 'html' || lang === 'qmd';
+  // XML/HTML start tags carry attributes; qmd tags have none, and the token
+  // after one (a table's zero-width '[') is content, never skipped
+  const attrs = lang === 'xml' || lang === 'html';
   const label = markup && clike ? (t, unmatched = false) => clikeLabel(u, t, unmatched, lang === 'html', lang !== 'qmd') : (t) => outlineLabel(u, t);
   const lines = [];
   let t = 0;
@@ -308,7 +311,7 @@ function outlineView(src, lang, maxDepth, { clike = false } = {}) {
     }
     if (isOpener && d === maxDepth - 1) {
       // count the element's content, not its (hidden) attributes
-      const inner = link - (markup && klass === KLASS.TAG ? skipAttributes(u, n, t) : t + 1);
+      const inner = link - (attrs && klass === KLASS.TAG ? skipAttributes(u, n, t) : t + 1);
       const openLabel = label(t);
       const closeLabel = label(link);
       lines.push(inner <= 0 ? `${indent}${openLabel}${closeLabel}` : `${indent}${openLabel} … ${inner} … ${closeLabel}`);
@@ -319,7 +322,7 @@ function outlineView(src, lang, maxDepth, { clike = false } = {}) {
     lines.push(indent + label(t, unmatched) + (unmatched ? ' …?' : ''));
     // a start tag (open '{' or void '/'): its attributes are not structure
     const tag = u.tagOf(t);
-    t = markup && klass === KLASS.TAG && (tag === 0x7B || tag === 0x2F) ? skipAttributes(u, n, t) : t + 1;
+    t = attrs && klass === KLASS.TAG && (tag === 0x7B || tag === 0x2F) ? skipAttributes(u, n, t) : t + 1;
   }
   return `outline (folded at depth ${maxDepth}; raise to peel a layer):\n${lines.join('\n')}`;
 }

@@ -27,7 +27,18 @@ docs, complete argument-less shortcodes), cut as **v0.8.0**. After it, qmd
 lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69), a list
 item's line as a block of its own (#71), and grid tables in the same layout.
 
-## Unreleased — qmd: grid tables
+## Unreleased — tdump: a qmd table right after a tag keeps its brackets
+
+- `tdump --outline` skips a start tag's attribute tokens, up to the next
+  tag/text/comment/declaration. qmd tags have no attributes, but the skip
+  ran there too: right after `{{< pagebreak >}}` or a `:::` opener, a
+  table's zero-width `[` (and its border/pipe punct) was skipped, so the
+  outline showed its cells and `]` with no opening `[`. sample.qmd's new
+  grid table showed it; a div opening straight onto a pipe table had the
+  same gap. Attribute skipping is now XML/HTML only; their outlines are
+  byte-identical.
+
+## PR #72 — qmd: grid tables · 2026-11-22
 
 - Grid tables (`+---+` borders, `+===+` under a header, `|` lines) use the
   pipe tables' `[]` layout: a zero-width `[` table of `[` rows `[` cells `]`
