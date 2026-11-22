@@ -25,8 +25,9 @@ grammared into an AST.
   sections (`#`…`######`, ended by the next heading as `~`), fenced divs
   (`:::`), code cells and code blocks (raw bodies), shortcodes
   (`{{< … >}}`), lists (`ul`/`ol`/`li`, ended by `~`), block quotes
-  (`blockquote ~`), pipe and grid tables (a `[]` layout: `[` rows `[` cells
-  `]` `]`) and front matter go on the same tape; a stray or unclosed
+  (`blockquote ~`), footnotes (`fn.id ~`), indented code (`code ~`), pipe
+  and grid tables (a `[]` layout: `[` rows `[` cells `]` `]`) and front
+  matter go on the same tape; a stray or unclosed
   `:::` or fence is a finding, never a refusal. Inline Markdown stays text.
 - **Per-language lexical tables.** JS, C, Python, XML, HTML. The scanner is
   language-agnostic; the swappable table is the only thing that changes. Tables

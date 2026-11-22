@@ -1099,8 +1099,10 @@ class UniLexer {
       const nextLine = next < len ? src.slice(next, lineAt(next).ce).trim() : '';
       const tableHead = small && !mk && content.includes('|') && nextLine.includes('|') && TABLE_DELIM.test(nextLine);
       const gridHead = small && !mk && GRID_SEP.test(content) && /^[|+]/.test(nextLine);
-      const structural = mk || tableHead || gridHead || (small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content));
+      const fn = small && !mk && /^\[\^([^\]\s]+)\]:/.exec(content);   // footnote definition
+      const structural = mk || fn || tableHead || gridHead || (small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content));
       endLists(cs, col, mk, !structural && !prevBlank);
+      const afterBlank = prevBlank;
       prevBlank = false;
 
       if (small && content.startsWith('<!--')) {                // HTML comment block:
@@ -1212,6 +1214,17 @@ class UniLexer {
         const restAt = cs + mk.m[0].length;
         return restAt < ce ? block(restAt, ce, next, contentCol) : ce;
       }
+      if (fn) {
+        // [^id]: a container like a list item; its later blocks are indented
+        // 4 columns (8 for code inside it). Ends ~ where a line is less
+        // indented and not a lazy continuation.
+        const name = `fn.${fn[1]}`;
+        const idx = emit(0x7B, KLASS.TAG, name, cs, depth);
+        stack.push({ idx, name, kind: 'item', contentCol: col + 4 });
+        depth++;
+        inline(cs + fn[0].length, ce);
+        return ce;
+      }
       if (tableHead) {
         const tIdx = emit(0x5B, KLASS.BRACKET, '', cs, depth);   // the table: [ rows ]
         depth++;
@@ -1275,6 +1288,29 @@ class UniLexer {
         endRow();                                                // no closing border
         depth--;
         link(tIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
+        return lastCe;
+      }
+      if (!small && afterBlank && lineQ === 0) {
+        // indented code: 4+ columns past the block indent, after a blank
+        // line (otherwise it continues a paragraph). It runs while lines
+        // stay that deep or blank; no closer in the source, so it ends ~.
+        // (Not inside a quote, where its lines carry '>' marks.)
+        const base = baseFor(col);
+        let lastCe = ce;
+        let p = next;
+        while (p < len) {
+          const l = lineAt(p);
+          const lt = src.slice(p, l.ce);
+          const ind = /^[ \t]*/.exec(lt)[0];
+          if (ind.length < lt.length && colOf(ind) - base < 4) break;
+          if (ind.length < lt.length) lastCe = l.ce;            // blank lines inside, not trailing
+          p = l.next;
+        }
+        const idx = emit(0x7B, KLASS.TAG, 'code', cs, depth);  // zero-width: the body follows
+        depth++;
+        emit(0x54, KLASS.TEXT, src.slice(cs, lastCe), cs, depth);
+        depth--;
+        link(idx, emit(TAG_IMPLIED, KLASS.TAG, 'code', lastCe, depth));
         return lastCe;
       }
       inline(cs, ce);
