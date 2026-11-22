@@ -1029,9 +1029,25 @@ class UniLexer {
       depth--;
       link(idx, emit(0x5D, KLASS.BRACKET, '', b, depth));
     };
+    // grid tables: +---+---+ borders (+===+ under a header), rows of | lines
+    const GRID_SEP = /^\+(?:[-=:]+\+)+[ \t]*$/;
+    const plusCols = (s) => [...s.matchAll(/\+/g)].map((x) => x.index);
+    // one line of a grid row [a,b): only a '|' on a border column splits
+    // cells ('|' elsewhere is cell text); a blank cell line is layout
+    const gridLine = (a, b, cols) => {
+      const cell = (x, y) => { if (src.slice(x, y).trim()) inline(x, y); else ws(x, y); };
+      let t = a;
+      for (const k of cols) {
+        const p = a + k;
+        if (p < t || p >= b || src.charCodeAt(p) !== 0x7C) continue;
+        cell(t, p);
+        emit(0x7C, KLASS.PUNCT, '|', p, depth);
+        t = p + 1;
+      }
+      cell(t, b);
+    };
 
-    let i = 0;
-    // front matter: '---' on the first line, closed by '---' or '...'
+    let i = 0;    // front matter: '---' on the first line, closed by '---' or '...'
     if (/^---[ \t]*\r?\n/.test(src)) {
       const re = /^(?:---|\.\.\.)[ \t]*\r?$/gm;
       re.lastIndex = src.indexOf('\n') + 1;
@@ -1056,7 +1072,8 @@ class UniLexer {
       const mk = mk0 ? { m: mk0, type: /\d/.test(mk0[1]) ? 'ol' : 'ul' } : null;
       const nextLine = next < len ? src.slice(next, lineAt(next).ce).trim() : '';
       const tableHead = small && !mk && content.includes('|') && nextLine.includes('|') && TABLE_DELIM.test(nextLine);
-      const structural = mk || tableHead || (small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content));
+      const gridHead = small && !mk && GRID_SEP.test(content) && /^[|+]/.test(nextLine);
+      const structural = mk || tableHead || gridHead || (small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content));
       endLists(cs, col, mk, !structural && !prevBlank);
       prevBlank = false;
 
@@ -1175,6 +1192,47 @@ class UniLexer {
           lastCe = l.ce;
           p = l.next;
         }
+        depth--;
+        link(tIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
+        return lastCe;
+      }
+      if (gridHead) {
+        // the same [ [ cells ] … ] layout as a pipe table: a row is every
+        // | line between two borders, so a multi-line cell's lines follow
+        // one another inside its row (the tape stays in source order)
+        const tIdx = emit(0x5B, KLASS.BRACKET, '', cs, depth);
+        depth++;
+        emit(0x2D, KLASS.PUNCT, content, cs, depth);              // +---+ border — punct
+        let cols = plusCols(content);
+        let rowIdx = -1;
+        let lastCe = ce;
+        let p = next;
+        const endRow = () => {
+          if (rowIdx === -1) return;
+          depth--;
+          link(rowIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
+          rowIdx = -1;
+        };
+        while (p < len) {
+          const l = lineAt(p);
+          const rcs = p + /^[ \t]*/.exec(src.slice(p, l.ce))[0].length;
+          const row = src.slice(rcs, l.ce);
+          const sep = GRID_SEP.test(row);
+          if (!sep && row[0] !== '|') break;
+          if (sep) {
+            endRow();
+            ws(lastCe, rcs);
+            emit(0x2D, KLASS.PUNCT, row, rcs, depth);
+            cols = plusCols(row);
+          } else {
+            ws(lastCe, rcs);
+            if (rowIdx === -1) { rowIdx = emit(0x5B, KLASS.BRACKET, '', rcs, depth); depth++; }
+            gridLine(rcs, l.ce, cols);
+          }
+          lastCe = l.ce;
+          p = l.next;
+        }
+        endRow();                                                // no closing border
         depth--;
         link(tIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
         return lastCe;

@@ -24,9 +24,26 @@ docs and an entity-bearing HTML sample). Then a first **Markdown** step
 (#65: Quarto qmd block structure — sections, fenced divs, code cells,
 shortcodes — tolerantly, where Quarto 2's own parser is strict; #66–#67:
 docs, complete argument-less shortcodes), cut as **v0.8.0**. After it, qmd
-lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69).
+lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69), a list
+item's line as a block of its own (#71), and grid tables in the same layout.
 
-## Unreleased — qmd: a list item's line is a block of its own
+## Unreleased — qmd: grid tables
+
+- Grid tables (`+---+` borders, `+===+` under a header, `|` lines) use the
+  pipe tables' `[]` layout: a zero-width `[` table of `[` rows `[` cells `]`
+  `]`. Borders are punctuation, like the pipe table's `|---|` row.
+- A row is every `|` line between two borders, so a multi-line cell's lines
+  follow one another inside its row; the tape stays in source order, and
+  cells are not merged across lines. Only a `|` on a border column (a `+` in
+  the border above) splits cells, so `a|b` in a cell is text. A blank cell
+  line is layout and prints nothing.
+- Cell content is inline text (shortcodes included); a fence or list
+  written inside a cell stays text. Quarto's markdown-basics.qmd: its
+  seven syntax/output tables now outline as `[ [ "Markdown Syntax"
+  "Output" ] … ]`, still lossless with no findings. samples/sample.qmd
+  gains one (a two-line cell with `{{< meta date >}}`).
+
+## PR #71 — qmd: a list item's line is a block of its own · 2026-11-22
 
 - Quarto's `docs/authoring/markdown-basics.qmd` reported five stray `:::`.
   Its list-tables write `- - ``` markdown` and `  - ::: pad-to-code-block`:

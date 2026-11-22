@@ -352,6 +352,30 @@ test('qmd: pipe tables are [ rows [ cells ] ] with zero-width brackets', () => {
   assert.deepEqual(qmdTags('| a |\n|---|\n').findings, []);
 });
 
+test('qmd: grid tables are the same [ rows [ cells ] ]; a row spans its | lines', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  const grid = [
+    '+-----+--------------+',
+    '| Day | Plan         |',
+    '+=====+==============+',
+    '| Mon | - a|b        |',   // '|' off a border column is cell text
+    '|     | {{< br >}} c |',
+    '+-----+--------------+',
+    '| Tue |              |',
+    '+-----+--------------+',
+    '',
+    'after',
+    '',
+  ].join('\n');
+  assert.deepEqual(view(grid), ['[', '  [', '    "Day"', '    "Plan"', '  ]',
+    '  [', '    "Mon"', '    "- a|b"', '    sc.br;', '    "c"', '  ]', '  [', '    "Tue"', '  ]', ']', '"after"']);
+  assert.deepEqual(qmdTags(grid).findings, []);
+  // a border with no | line after it is not a table
+  assert.deepEqual(view('+---+\ntext\n'), ['"+---+"', '"text"']);
+  // no closing border: the last row and the table still close
+  assert.deepEqual(view('+---+\n| x |\n'), ['[', '  [', '    "x"', '  ]', ']']);
+});
+
 test('qmd: tdump --outline --clike and samples/sample.qmd', () => {
   assert.deepEqual(outlineView('# T\n::: note\nhi\n:::\n```{r}\n1\n```\n{{< pagebreak >}}\n', 'qmd', 99, { clike: true }).split('\n').slice(1),
     ['h1 ~', '  "T"', '  div.note {', '    "hi"', '  }', '  cell.r {', '    "1"', '  }', '  sc.pagebreak;', '~']);
