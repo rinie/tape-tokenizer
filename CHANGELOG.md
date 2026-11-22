@@ -28,7 +28,28 @@ lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69), a list
 item's line as a block of its own (#71), grid tables in the same layout
 (#72), an outline fix for a table right after a tag (#73), a sibling
 list item after a nested one (#75), escaped cells with their language
-(#77), and block quotes (#78), cut as **v0.9.0**.
+(#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
+and footnotes.
+
+## Unreleased — qmd: indented code and footnotes
+
+- Quarto's cross-references.qmd shows cells as Markdown source, indented 4
+  spaces (`    ```{{python}}` …): an indented code block, which came out as
+  one text line per source line. A line 4+ columns past the block indent,
+  after a blank line, now opens `code ~` — one raw text body, running while
+  lines stay that deep or blank (trailing blanks excluded), closed by an
+  implied `~`. Without the blank line it still continues the paragraph;
+  inside a list item it is measured from the item's content column; not
+  inside a block quote (its lines carry `>` marks).
+- That alone turned markdown-basics.qmd's footnotes into code: `[^2]:`'s
+  later paragraphs are indented 4 because they belong to the footnote. A
+  footnote definition `[^id]:` is now a container like a list item,
+  `fn.id ~ … ~`, with its content 4 columns in — its paragraphs stay in
+  it, and 8 columns is code inside it.
+- cross-references.qmd: three indented code blocks; markdown-basics.qmd:
+  three footnotes (one with code); callouts.qmd, figures.qmd, tables.qmd
+  unchanged. All lossless, no findings. sample.qmd gains a footnote with
+  indented code.
 
 ## v0.9.0 · 2026-11-22
 

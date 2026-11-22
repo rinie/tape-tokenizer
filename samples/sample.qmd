@@ -8,14 +8,14 @@ execute:
 <!-- qmd sample for the unilexer qmd mode: front matter, ATX sections that
      end implicitly, fenced divs (nested, with attributes), executable code
      cells and plain code blocks whose bodies hold fence- and shortcode-looking
-     text, inline shortcodes, pipe and grid tables, a nested list and a
-     block quote holding a list. One seam is
+     text, inline shortcodes, pipe and grid tables, a nested list, a
+     block quote holding a list and a footnote with indented code. One seam is
      deliberate: a stray ':::' after the summary div, closing nothing. -->
 
 # Overview
 
 This report summarises the order totals. See {{< meta title >}} for the
-source, and `{{< not-a-shortcode >}}` inside inline code is just code.
+source,[^src] and `{{< not-a-shortcode >}}` inside inline code is just code.
 
 | Id | Amount |
 |---:|-------:|
@@ -83,6 +83,12 @@ Three orders, 35.50 in total.
 | closed | paid in full, booked |
 |        | on {{< meta date >}} |
 +--------+----------------------+
+
+[^src]: Totals come from the ledger export.
+
+    Amounts are rounded per order:
+
+        round(amount, 2)
 
 ~~~bash
 quarto render sample.qmd

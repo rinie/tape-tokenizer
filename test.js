@@ -368,6 +368,20 @@ test('qmd: block quotes nest, hold blocks, end with ~', () => {
     ['ul ~', '  li ~', '    "i"', '    blockquote ~', '      "q"', '    ~', '    "back"', '  ~', '~']);
 });
 
+test('qmd: indented code after a blank line; footnotes hold indented blocks', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  // 4+ columns after a blank line is code (blank lines inside, not trailing);
+  // without the blank line it continues the paragraph
+  assert.deepEqual(view('text\n\n    a\n\n    b\n\nafter\n'), ['"text"', 'code ~', '  "a\\n\\n    b"', '~', '"after"']);
+  assert.deepEqual(view('text\n    more\n'), ['"text"', '"more"']);
+  // inside a list item, measured from its content column
+  assert.deepEqual(qmdTags('- a\n\n      code\n').out, ['{ ul', '{ li', '{ code', '~ code', '~ li', '~ ul']);
+  // [^id]: a container — its 4-indented paragraphs stay in, 8 is code
+  const fn = qmdTags('[^n]: One.\n\n    Two.\n\n        code\n\n[^m]: Three.\n\nafter\n');
+  assert.deepEqual(fn.out, ['{ fn.n', '{ code', '~ code', '~ fn.n', '{ fn.m', '~ fn.m']);
+  assert.deepEqual(fn.findings, []);
+});
+
 test('qmd: pipe tables are [ rows [ cells ] ] with zero-width brackets', () => {
   const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
   assert.deepEqual(view('| a | b |\n|---|:-:|\n| 1 |   |\n\nafter\n'),
