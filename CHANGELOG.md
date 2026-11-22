@@ -26,9 +26,10 @@ shortcodes — tolerantly, where Quarto 2's own parser is strict; #66–#67:
 docs, complete argument-less shortcodes), cut as **v0.8.0**. After it, qmd
 lists (`ul`/`ol`/`li ~`) and pipe tables in a `[]` layout (#69), a list
 item's line as a block of its own (#71), grid tables in the same layout
-(#72), and an outline fix for a table right after a tag (#73).
+(#72), an outline fix for a table right after a tag (#73), and a sibling
+list item after a nested one (#75).
 
-## Unreleased — qmd: a sibling item after a nested one
+## PR #75 — qmd: a sibling item after a nested one · 2026-11-22
 
 - Quarto's `docs/authoring/tables.qmd` (a list table) has `  - Count
   items:` then `    - Works on lists` / `    - Works on strings`: the
