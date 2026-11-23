@@ -30,7 +30,29 @@ item's line as a block of its own (#71), grid tables in the same layout
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), raw blocks named by their
-format (#84), and table captions (#86), cut as **v0.10.0**.
+format (#84), and table captions (#86), cut as **v0.10.0**. After it,
+raw HTML blocks.
+
+## Unreleased — qmd: raw HTML blocks
+
+- A line starting with a block-level tag (CommonMark's HTML-block names:
+  `<div>`, `<p>`, `<details>`, `<table>`, …) was a text line, so the
+  revealjs page's `<div>` … `</div>` around a `{=html}` iframe came out
+  as two loose strings. Such a line's block-level tags are now elements,
+  as in the HTML mode: `<div>` opens `div {` (the opener spans the start
+  tag, attributes hidden), `</div>` closes it, and the lines between are
+  Markdown again (Pandoc's `markdown_in_html_blocks`) — lists, fences
+  and headings nest inside.
+- HTML's own tolerance carries over: optional end tags (`<p>`, `<li>`,
+  `<td>`, …) are implied `~` by a sibling, a parent's end tag or EOF;
+  void ones (`<hr>`) and `<x/>` are complete `hr;`; `<script>`,
+  `<style>`, `<pre>`, `<textarea>` hold raw text to their end tag. Inline
+  tags (`<span>`, `<kbd>`, `<b>`) and autolinks (`<https://…>`) stay
+  text. An end tag with nothing open is an orphan finding; an element
+  that needs its end tag and never gets one is unclosed.
+- revealjs index.qmd: `div { raw.html { … } }`. Every other `<…>` line in
+  the sixteen pages sits inside a code example; all unchanged, lossless,
+  no findings. sample.qmd gains a `<details>` block holding a list.
 
 ## v0.10.0 · 2026-11-23
 
