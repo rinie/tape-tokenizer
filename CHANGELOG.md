@@ -30,9 +30,9 @@ item's line as a block of its own (#71), grid tables in the same layout
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), and raw blocks named by
-their format.
+their format (#84).
 
-## Unreleased — qmd: raw blocks are raw.format
+## PR #84 — qmd: raw blocks are raw.format · 2026-11-23
 
 - Pandoc raw blocks (```` ```{=html} ````, `{=latex}`, `{=typst}`) — passed
   to that output format untouched — came out as a bare `code`: `=`
