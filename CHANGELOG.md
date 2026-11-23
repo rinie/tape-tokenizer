@@ -29,7 +29,21 @@ item's line as a block of its own (#71), grid tables in the same layout
 (#72), an outline fix for a table right after a tag (#73), a sibling
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
-and footnotes (#80), and definition lists (#82).
+and footnotes (#80), definition lists (#82), and raw blocks named by
+their format.
+
+## Unreleased — qmd: raw blocks are raw.format
+
+- Pandoc raw blocks (```` ```{=html} ````, `{=latex}`, `{=typst}`) — passed
+  to that output format untouched — came out as a bare `code`: `=`
+  matched neither the cell nor the code-block rule, so the format was
+  lost. They are now `raw.html { … }`, `raw.latex { … }`, …, apart from
+  code that is only shown. The body stays one raw text token.
+- Quarto's revealjs index.qmd: one `raw.html` (an iframe between raw
+  `<div>` lines, which stay text); tables.qmd: four. The other `{=…}`
+  fences in these pages sit inside ```` ```` markdown ```` examples and
+  stay code text. citations, execution-options and the earlier pages
+  unchanged. All lossless, no findings. sample.qmd gains a raw HTML block.
 
 ## PR #82 — qmd: definition lists · 2026-11-23
 
