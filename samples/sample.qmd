@@ -8,7 +8,8 @@ execute:
 <!-- qmd sample for the unilexer qmd mode: front matter, ATX sections that
      end implicitly, fenced divs (nested, with attributes), executable code
      cells and plain code blocks whose bodies hold fence- and shortcode-looking
-     text, a raw HTML block, inline shortcodes, pipe and grid tables, a
+     text, a raw HTML block, inline shortcodes, pipe and grid tables (one
+     captioned), a
      nested list, a block quote holding a list, a definition list and a
      footnote with indented code. One seam is deliberate: a stray ':::'
      after the summary div, closing nothing. -->
@@ -22,6 +23,8 @@ source,[^src] and `{{< not-a-shortcode >}}` inside inline code is just code.
 |---:|-------:|
 | 1  | 10.00  |
 | 2  | 25.50  |
+
+: Orders by id {tbl-colwidths="[30,70]"}
 
 - two orders
 - one currency

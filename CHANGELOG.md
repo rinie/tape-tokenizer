@@ -29,8 +29,23 @@ item's line as a block of its own (#71), grid tables in the same layout
 (#72), an outline fix for a table right after a tag (#73), a sibling
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
-and footnotes (#80), definition lists (#82), and raw blocks named by
-their format (#84).
+and footnotes (#80), definition lists (#82), raw blocks named by their
+format (#84), and table captions.
+
+## Unreleased — qmd: table captions
+
+- Pandoc puts a table's caption on a `:` line after it —
+  `: Fruit prices {.striped .hover}`, or just attributes,
+  `: {tbl-colwidths="30,70"}` — which came out as a loose paragraph
+  `": …"` after the table's `]`. A `: ` or `Table: ` line right after a
+  pipe or grid table (blank lines between allowed) is now
+  `caption ~ … ~`, holding the rest of its paragraph; the marker is
+  hidden like a list marker. Elsewhere a `:` line is still text or a
+  definition.
+- Quarto's tables.qmd: six captions; markdown-basics.qmd: one;
+  website-navigation.qmd: two. The `: definition` lines inside a grid
+  table's cells stay cell text. Every other page unchanged; all lossless,
+  no findings. sample.qmd's pipe table gains a caption.
 
 ## PR #84 — qmd: raw blocks are raw.format · 2026-11-23
 

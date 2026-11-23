@@ -382,6 +382,16 @@ test('qmd: indented code after a blank line; footnotes hold indented blocks', ()
   assert.deepEqual(fn.findings, []);
 });
 
+test('qmd: a ": caption" line after a table is caption ~ … ~', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  assert.deepEqual(view('| a |\n|---|\n\n: Fruit {.striped}\n  prices\n\nafter\n'),
+    ['[', '  [', '    "a"', '  ]', ']', 'caption ~', '  "Fruit {.striped}"', '  "prices"', '~', '"after"']);
+  assert.deepEqual(qmdTags('+---+\n| x |\n+---+\nTable: Grid.\n').out, ['{ caption', '~ caption']);
+  // not after a table: a ':' line is text (or a definition, after a term)
+  assert.deepEqual(view('a\n\n: b\n'), ['dl ~', '  dt ~', '    "a"', '  ~', '  dd ~', '    "b"', '  ~', '~']);
+  assert.deepEqual(view('a\nb\n: c\n'), ['"a"', '"b"', '": c"']);
+});
+
 test('qmd: a {=format} fence is a raw block, raw.format', () => {
   assert.deepEqual(qmdTags('```{=html}\n<b>x</b>\n```\n``` {=typst} \n#x\n```\n').out, ['{ raw.html', '} raw.html', '{ raw.typst', '} raw.typst']);
 });
