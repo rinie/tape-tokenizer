@@ -29,9 +29,9 @@ item's line as a block of its own (#71), grid tables in the same layout
 (#72), an outline fix for a table right after a tag (#73), a sibling
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
-and footnotes (#80), and definition lists.
+and footnotes (#80), and definition lists (#82).
 
-## Unreleased — qmd: definition lists
+## PR #82 — qmd: definition lists · 2026-11-23
 
 - Quarto's title-blocks.qmd lists its three `title-block-style` options as a
   Pandoc definition list (a term line, then `:   definition`), which came
