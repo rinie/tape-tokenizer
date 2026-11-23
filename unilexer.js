@@ -1084,6 +1084,31 @@ class UniLexer {
     // a line that ends an open quote's paragraph instead of lazily continuing it
     const LAZY_STOP = /^(?:[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$)|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$)|<!--|\+[-=:])/;
 
+    // definition lists (Pandoc): a one-line term, then ':' or '~' definitions
+    const DD_MARK = /^([:~])([ \t]+)(?=\S)/;
+    let termJust = false;   // the last block line was a dt (blank lines between are fine)
+    // an open dl a definition marker at column col continues (only lists and
+    // items above it, which the marker ends)
+    const dlOpen = (col) => {
+      for (let s = stack.length - 1; s >= 0; s--) {
+        const e = stack[s];
+        if (e.kind === 'list' && e.name === 'dl') return e.markerCol <= col;
+        if (e.kind !== 'item' && e.kind !== 'list') return false;
+      }
+      return false;
+    };
+    // the line from p (after at most one blank line) is a definition marker
+    // at column col to col+3: the line before it is a term
+    const termAhead = (p, col) => {
+      if (p >= len) return false;
+      let l = lineAt(p);
+      if (!src.slice(p, l.ce).trim()) { p = l.next; if (p >= len) return false; l = lineAt(p); }
+      const lt = src.slice(p, l.ce);
+      const ind = /^[ \t]*/.exec(lt)[0];
+      const c = colOf(ind);
+      return c >= col && c - col <= 3 && DD_MARK.test(lt.slice(ind.length));
+    };
+
     // One block line from cs (its content start) to ce at column col: what
     // it is, which lists it ends, and its tokens. Returns where scanning
     // resumes. Re-entered for the rest of a list-item line.
@@ -1100,8 +1125,13 @@ class UniLexer {
       const tableHead = small && !mk && content.includes('|') && nextLine.includes('|') && TABLE_DELIM.test(nextLine);
       const gridHead = small && !mk && GRID_SEP.test(content) && /^[|+]/.test(nextLine);
       const fn = small && !mk && /^\[\^([^\]\s]+)\]:/.exec(content);   // footnote definition
-      const structural = mk || fn || tableHead || gridHead || (small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content));
-      endLists(cs, col, mk, !structural && !prevBlank);
+      const afterTerm = termJust;
+      termJust = false;
+      const blockStart = small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content);
+      const dd = small && !mk && (m0 => m0 && (afterTerm || dlOpen(col)) ? m0 : null)(DD_MARK.exec(content));
+      const dt = small && !dd && !mk && !fn && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 && termAhead(next, col);
+      const structural = mk || fn || dd || dt || tableHead || gridHead || blockStart;
+      endLists(cs, col, mk || (dd || dt ? { type: 'dl' } : null), !structural && !prevBlank);
       const afterBlank = prevBlank;
       prevBlank = false;
 
@@ -1192,6 +1222,31 @@ class UniLexer {
         depth++;
         inline(cs + m[0].length, ce);
         return ce;
+      }
+      if (dt || dd) {
+        // dl ~ dt ~ "term" ~ dd ~ … ~ ~: a term opens the dl (zero-width)
+        // unless one is open; each ':' definition is an item like an li
+        const top = stack[stack.length - 1];
+        if (!top || top.kind !== 'list' || top.name !== 'dl') {
+          const idx = emit(0x7B, KLASS.TAG, 'dl', cs, depth);
+          stack.push({ idx, name: 'dl', kind: 'list', markerCol: col });
+          depth++;
+        }
+        if (dt) {                                                // one line; ends ~ at its end
+          const idx = emit(0x7B, KLASS.TAG, 'dt', cs, depth);
+          depth++;
+          inline(cs, ce);
+          depth--;
+          link(idx, emit(TAG_IMPLIED, KLASS.TAG, 'dt', ce, depth));
+          termJust = true;
+          return ce;
+        }
+        const gap = colOf(dd[2]);
+        const contentCol = col + 1 + (gap > 4 ? 1 : gap);
+        const idx = emit(0x7B, KLASS.TAG, 'dd', cs, depth);
+        stack.push({ idx, name: 'dd', kind: 'item', contentCol });
+        depth++;
+        return block(cs + dd[0].length, ce, next, contentCol);
       }
       if (mk) {
         // a sibling continues the open list; anything else opens one

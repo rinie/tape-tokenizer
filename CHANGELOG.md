@@ -29,7 +29,24 @@ item's line as a block of its own (#71), grid tables in the same layout
 (#72), an outline fix for a table right after a tag (#73), a sibling
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
-and footnotes (#80).
+and footnotes (#80), and definition lists.
+
+## Unreleased — qmd: definition lists
+
+- Quarto's title-blocks.qmd lists its three `title-block-style` options as a
+  Pandoc definition list (a term line, then `:   definition`), which came
+  out as six loose paragraphs. A term — one line after a blank line, with a
+  `:` or `~` marker (indented 0–3) on the next line or after one blank
+  line — now opens `dl ~` (zero-width) with `dt ~ … ~`; each definition is
+  `dd ~ … ~`, an item like an `li` whose content column follows the
+  marker, so its indented paragraphs, lists and code stay in it. More
+  terms and definitions continue the `dl`; anything else ends it.
+- A `:` line right after a paragraph line is still text (a term needs a
+  blank line before it), and `:::` is still a div. Not inside a block
+  quote yet.
+- title-blocks.qmd: one `dl` of three terms; callouts, cross-references,
+  diagrams, figures, markdown-basics, tables unchanged. All lossless, no
+  findings. sample.qmd gains a two-term definition list.
 
 ## PR #80 — qmd: indented code and footnotes · 2026-11-22
 

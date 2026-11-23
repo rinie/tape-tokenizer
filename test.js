@@ -382,6 +382,19 @@ test('qmd: indented code after a blank line; footnotes hold indented blocks', ()
   assert.deepEqual(fn.findings, []);
 });
 
+test('qmd: definition lists are dl ~ dt ~ … ~ dd ~ … ~ ~', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  // a term (after a blank line) needs a ':' or '~' definition next, a blank
+  // line between allowed; a definition holds its indented blocks
+  assert.deepEqual(view('Apple\n\n:   A fruit.\n\n    - red\n: Two.\n\nPear\n  ~ Green.\n\nafter\n'),
+    ['dl ~', '  dt ~', '    "Apple"', '  ~', '  dd ~', '    "A fruit."', '    ul ~', '      li ~', '        "red"', '      ~', '    ~', '  ~',
+      '  dd ~', '    "Two."', '  ~', '  dt ~', '    "Pear"', '  ~', '  dd ~', '    "Green."', '  ~', '~', '"after"']);
+  // ':' after a paragraph line is text, and ':::' is still a div
+  assert.deepEqual(view('a\nb\n: c\n'), ['"a"', '"b"', '": c"']);
+  assert.deepEqual(qmdTags('T\n\n: d\n\n::: x\n:::\n').out, ['{ dl', '{ dt', '~ dt', '{ dd', '~ dd', '~ dl', '{ div.x', '} div.x']);
+  assert.deepEqual(qmdTags('T\n: d\n').findings, []);
+});
+
 test('qmd: pipe tables are [ rows [ cells ] ] with zero-width brackets', () => {
   const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
   assert.deepEqual(view('| a | b |\n|---|:-:|\n| 1 |   |\n\nafter\n'),
