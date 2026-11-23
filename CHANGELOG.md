@@ -31,9 +31,9 @@ list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), raw blocks named by their
 format (#84), and table captions (#86), cut as **v0.10.0**. After it,
-raw HTML blocks.
+raw HTML blocks (#89).
 
-## Unreleased — qmd: raw HTML blocks
+## PR #89 — qmd: raw HTML blocks · 2026-11-23
 
 - A line starting with a block-level tag (CommonMark's HTML-block names:
   `<div>`, `<p>`, `<details>`, `<table>`, …) was a text line, so the
