@@ -392,6 +392,22 @@ test('qmd: a ": caption" line after a table is caption ~ … ~', () => {
   assert.deepEqual(view('a\nb\n: c\n'), ['"a"', '"b"', '": c"']);
 });
 
+test('qmd: raw HTML blocks — block-level tags are structure, Markdown between', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  // <div> … </div> holds Markdown; inline tags (<b>, <kbd>) stay text
+  assert.deepEqual(view('<div class="x">\n\n- a\n\n</div>\n<details>\n<summary>More <b>info</b></summary>\nSee <kbd>K</kbd>.\n</details>\n'),
+    ['div {', '  ul ~', '    li ~', '      "a"', '    ~', '  ~', '}', 'details {', '  summary {', '    "More <b>info</b>"', '  }', '  "See <kbd>K</kbd>."', '}']);
+  // optional end tags are implied (~), void elements complete (hr;), a raw
+  // element's body is text even with a tag in it
+  assert.deepEqual(view('<ul>\n<li>one\n<li>two\n</ul>\n<hr>\n<script>\nif (a < b) { </div> }\n</script>\n'),
+    ['ul {', '  li ~', '    "one"', '  ~', '  li ~', '    "two"', '  ~', '}', 'hr;', 'script {', '  "if (a < b) { </div> }"', '}']);
+  // an autolink and an inline tag at line start are text
+  assert.deepEqual(view('<https://quarto.org>\n<span>x</span>\n'), ['"<https://quarto.org>"', '"<span>x</span>"']);
+  // tolerant: an orphan end tag and an unclosed <section> are findings
+  assert.deepEqual(qmdTags('</div>\n\n<section>\nx\n').findings, ['orphan-close-tag:div', 'unclosed-tag:section']);
+  assert.deepEqual(qmdTags('<div>\n<p>a\n</div>\n').findings, []);
+});
+
 test('qmd: a {=format} fence is a raw block, raw.format', () => {
   assert.deepEqual(qmdTags('```{=html}\n<b>x</b>\n```\n``` {=typst} \n#x\n```\n').out, ['{ raw.html', '} raw.html', '{ raw.typst', '} raw.typst']);
 });

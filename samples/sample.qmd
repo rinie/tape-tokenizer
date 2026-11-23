@@ -8,11 +8,11 @@ execute:
 <!-- qmd sample for the unilexer qmd mode: front matter, ATX sections that
      end implicitly, fenced divs (nested, with attributes), executable code
      cells and plain code blocks whose bodies hold fence- and shortcode-looking
-     text, a raw HTML block, inline shortcodes, pipe and grid tables (one
-     captioned), a
-     nested list, a block quote holding a list, a definition list and a
-     footnote with indented code. One seam is deliberate: a stray ':::'
-     after the summary div, closing nothing. -->
+     text, a raw {=html} block, an HTML <details> block holding Markdown,
+     inline shortcodes, pipe and grid tables (one captioned), a nested
+     list, a block quote holding a list, a definition list and a footnote
+     with indented code. One seam is deliberate: a stray ':::' after the
+     summary div, closing nothing. -->
 
 # Overview
 
@@ -82,6 +82,14 @@ Three orders, 35.50 in total.
 ```{=html}
 <p class="note">Status codes as booked:</p>
 ```
+
+<details>
+<summary>How <b>totals</b> are built</summary>
+
+- one line per order
+- rounded per order
+
+</details>
 
 open
 :   Not yet paid.

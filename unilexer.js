@@ -888,8 +888,16 @@ class UniLexer {
   //                  zero-width TEXT, so columns stay aligned); the pipes and
   //                  the delimiter row are punct
   //
-  // Not handled (text): setext headings, block quotes, grid/simple tables,
-  // fancy list markers (a. i. #.), other raw HTML, indented code blocks.
+  //   raw HTML       a line starting with a block-level tag (<div>, <p>,
+  //                  <table>, …): its block-level tags are elements as in
+  //                  HTML mode (optional end tags implied '~', void ones
+  //                  complete), the lines between Markdown again; inline
+  //                  tags stay text; <script>/<style>/<pre> bodies are raw
+  //   (also: block quotes, footnotes, indented code, definition lists,
+  //   grid tables, table captions, raw {=format} blocks — see below)
+  //
+  // Not handled (text): setext headings, simple/multiline tables, fancy list
+  // markers (a. i. #.), block content inside grid-table cells.
   tokenizeQmd(src) {
     const tp = this._tape();
     const { emit, link } = tp;
@@ -1088,6 +1096,86 @@ class UniLexer {
     const DD_MARK = /^([:~])([ \t]+)(?=\S)/;
     let termJust = false;   // the last block line was a dt (blank lines between are fine)
     let tableJust = false;  // … or a pipe/grid table: ': caption' may follow
+
+    // raw HTML blocks: a line starting with a block-level tag (CommonMark's
+    // HTML block names) or <script>/<style>/<pre>/<textarea>. Its block-level
+    // tags are structure — <div> opens div, </div> closes it — and the lines
+    // between are Markdown again (Pandoc's markdown_in_html_blocks). Other
+    // tags on the line (<span>, <kbd>, …) stay text.
+    const HTML_BLOCK = new Set(('address article aside base basefont blockquote body caption center col colgroup dd details dialog dir div dl dt ' +
+      'fieldset figcaption figure footer form frame frameset h1 h2 h3 h4 h5 h6 head header hr html iframe legend li link main menu menuitem ' +
+      'nav noframes ol optgroup option p param search section summary table tbody td tfoot th thead title tr track ul').split(' '));
+    const HTML_RAW = new Set(['script', 'style', 'pre', 'textarea']);           // body is raw text
+    const HTML_VOID = new Set(['base', 'basefont', 'col', 'frame', 'hr', 'link', 'param', 'track']);
+    const HTML_OPT = new Set(['p', 'li', 'dt', 'dd', 'tr', 'td', 'th', 'thead', 'tbody', 'tfoot', 'option', 'optgroup', 'colgroup', 'caption', 'head', 'body', 'html']);
+    const HTML_START = /^<\/?([A-Za-z][A-Za-z0-9-]*)(?=[\s/>]|$)/;
+    const TAG_RE = /<(\/?)([A-Za-z][A-Za-z0-9-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/?)>/y;
+    // an open element whose end tag is optional ends where this one starts
+    const endsOnOpen = (top, name) =>
+      (top === 'p' && HTML_BLOCK.has(name)) || (top === name && (top === 'li' || top === 'tr' || top === 'option')) ||
+      ((top === 'td' || top === 'th') && (name === 'td' || name === 'th' || name === 'tr')) ||
+      ((top === 'dt' || top === 'dd') && (name === 'dt' || name === 'dd')) || (top === 'option' && name === 'optgroup');
+    // an element that needs its end tag (or a ':::' div) is left unclosed:
+    // dropped from the stack with its link at -1, a finding
+    const needsEnd = (e) => e.kind === 'div' || (e.kind === 'html' && !HTML_OPT.has(e.name));
+    const dropTop = () => { stack.pop(); depth = depth > 0 ? depth - 1 : 0; };
+    const openHtml = (off, name) => {
+      for (let top = stack[stack.length - 1]; top && top.kind === 'html' && HTML_OPT.has(top.name) && endsOnOpen(top.name, name); top = stack[stack.length - 1]) closeTop(off, TAG_IMPLIED);
+      const idx = emit(0x7B, KLASS.TAG, name, off, depth);         // spans the start tag
+      stack.push({ idx, name, kind: 'html' });
+      depth++;
+    };
+    const closeHtml = (off, name) => {
+      let s = stack.length - 1;
+      while (s >= 0 && !(stack[s].kind === 'html' && stack[s].name === name)) s--;
+      if (s === -1) { emit(0x7D, KLASS.TAG, name, off, depth); return; }   // orphan
+      while (stack.length - 1 > s) {
+        if (needsEnd(stack[stack.length - 1])) dropTop();
+        else closeTop(off, TAG_IMPLIED);                         // sections, lists, <li>, …
+      }
+      closeTop(off, 0x7D);
+    };
+    // one HTML block line from cs: its block-level tags and the text between
+    // (a tag may run onto the next lines; a raw element runs to its end tag)
+    const htmlLine = (cs, ce) => {
+      let lineEnd = ce;
+      let t = cs;
+      let pos = cs;
+      const reach = (p) => { if (p > lineEnd) lineEnd = lineAt(p).ce; };
+      while (pos < lineEnd) {
+        const lt = src.indexOf('<', pos);
+        if (lt === -1 || lt >= lineEnd) break;
+        TAG_RE.lastIndex = lt;
+        const m = TAG_RE.exec(src);
+        if (!m || /\n[ \t]*\r?\n/.test(m[0])) { pos = lt + 1; continue; }
+        const name = m[2].toLowerCase();
+        const end = lt + m[0].length;
+        const raw = HTML_RAW.has(name);
+        if (!HTML_BLOCK.has(name) && !raw) { pos = end; reach(end); continue; }   // inline tag: text
+        inline(t, lt);
+        if (m[1]) closeHtml(lt, name);
+        else if (m[4] || HTML_VOID.has(name)) { const idx = emit(0x2F, KLASS.TAG, name, lt, depth); link(idx, idx); }
+        else if (raw) {
+          const re = new RegExp(`</${name}\\s*>`, 'ig');
+          re.lastIndex = end;
+          const c = re.exec(src);
+          const bodyEnd = c ? c.index : len;
+          const idx = emit(0x7B, KLASS.TAG, name, lt, depth);
+          depth++;
+          textOrWs(end, bodyEnd);                                // raw: no shortcodes inside
+          depth--;
+          if (!c) return len;                                    // unclosed: link stays -1
+          link(idx, emit(0x7D, KLASS.TAG, name, c.index, depth));
+          t = pos = c.index + c[0].length;
+          reach(pos);
+          continue;
+        } else openHtml(lt, name);
+        t = pos = end;
+        reach(end);
+      }
+      inline(t, lineEnd);
+      return lineEnd;
+    };
     // an open dl a definition marker at column col continues (only lists and
     // items above it, which the marker ends)
     const dlOpen = (col) => {
@@ -1133,9 +1221,11 @@ class UniLexer {
       const blockStart = small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content);
       // a table's caption (Pandoc): ': Caption {attrs}' or 'Table: …' after it
       const cap = small && afterTable && /^(?:Table)?:[ \t]+/.exec(content);
+      const hs = small && !blockStart && HTML_START.exec(content);
+      const html = hs && (HTML_BLOCK.has(hs[1].toLowerCase()) || HTML_RAW.has(hs[1].toLowerCase()));
       const dd = small && !mk && !cap && (m0 => m0 && (afterTerm || dlOpen(col)) ? m0 : null)(DD_MARK.exec(content));
-      const dt = small && !cap && !dd && !mk && !fn && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 && termAhead(next, col);
-      const structural = mk || fn || cap || dd || dt || tableHead || gridHead || blockStart;
+      const dt = small && !cap && !dd && !mk && !fn && !html && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 && termAhead(next, col);
+      const structural = mk || fn || cap || dd || dt || html || tableHead || gridHead || blockStart;
       endLists(cs, col, mk || (dd || dt ? { type: 'dl' } : null), !structural && !prevBlank);
       const afterBlank = prevBlank;
       prevBlank = false;
@@ -1147,6 +1237,7 @@ class UniLexer {
         emit(cmt.includes('\n') ? TAG_COMMENT_ML : TAG_COMMENT, KLASS.COMMENT, cmt, cs, depth);
         return end;
       }
+      if (html) return htmlLine(cs, ce);
       let m;
       if (small && (m = /^(`{3,}|~{3,})[ \t]*(.*)$/.exec(content)) && !(m[1][0] === '`' && m[2].includes('`'))) {
         // code fence: opener token spans the fence line (info string hidden)
@@ -1448,10 +1539,11 @@ class UniLexer {
       i = block(cs, ce, next, colOf(line.slice(0, ind)));
     }
 
-    // EOF ends every open section and list; a div still open stays unclosed
+    // EOF ends every open section and list (and <p>, <li>, …); a div or an
+    // element that needs its end tag still open stays unclosed
     while (stack.length) {
-      if (stack[stack.length - 1].kind !== 'div') closeTop(len, TAG_IMPLIED);
-      else { stack.pop(); depth = depth > 0 ? depth - 1 : 0; }
+      if (!needsEnd(stack[stack.length - 1])) closeTop(len, TAG_IMPLIED);
+      else dropTop();
     }
 
     return tp.finish(this, src, TAG_CLASS_QMD, true);

@@ -24,7 +24,8 @@ grammared into an AST.
 - **Quarto Markdown's block structure (prototype).** In `.qmd` files,
   sections (`#`…`######`, ended by the next heading as `~`), fenced divs
   (`:::`), code cells, code blocks and raw `{=html}` blocks (raw bodies;
-  `raw.html`), shortcodes
+  `raw.html`), HTML blocks (`<div>` … `</div>` as `div { … }`, Markdown
+  inside), shortcodes
   (`{{< … >}}`), lists (`ul`/`ol`/`li`, ended by `~`), definition lists
   (`dl`/`dt`/`dd`), block quotes
   (`blockquote ~`), footnotes (`fn.id ~`), indented code (`code ~`), pipe
@@ -70,6 +71,7 @@ node tdump.js --outline 3 --clike samples\sample.xml
 node tdump.js --outline 99 --clike samples\sample.qmd
                                 :: Quarto: h1 ~ … ~ sections, div.callout-note { … },
                                 :: cell.r { … }, raw.html { … }, sc.include { … },
+                                :: details { summary { … } … } HTML blocks,
                                 :: sc.pagebreak;
                                 :: ul ~ li ~ … ~ ~ lists, blockquote ~ … ~,
                                 :: dl ~ dt ~ … ~ dd ~ … ~ ~ definition lists,
