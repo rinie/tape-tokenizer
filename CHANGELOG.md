@@ -29,9 +29,9 @@ item's line as a block of its own (#71), grid tables in the same layout
 (#72), an outline fix for a table right after a tag (#73), a sibling
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
-and footnotes.
+and footnotes (#80).
 
-## Unreleased — qmd: indented code and footnotes
+## PR #80 — qmd: indented code and footnotes · 2026-11-22
 
 - Quarto's cross-references.qmd shows cells as Markdown source, indented 4
   spaces (`    ```{{python}}` …): an indented code block, which came out as
