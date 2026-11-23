@@ -24,7 +24,8 @@ grammared into an AST.
 - **Quarto Markdown's block structure (prototype).** In `.qmd` files,
   sections (`#`…`######`, ended by the next heading as `~`), fenced divs
   (`:::`), code cells and code blocks (raw bodies), shortcodes
-  (`{{< … >}}`), lists (`ul`/`ol`/`li`, ended by `~`), block quotes
+  (`{{< … >}}`), lists (`ul`/`ol`/`li`, ended by `~`), definition lists
+  (`dl`/`dt`/`dd`), block quotes
   (`blockquote ~`), footnotes (`fn.id ~`), indented code (`code ~`), pipe
   and grid tables (a `[]` layout: `[` rows `[` cells `]` `]`) and front
   matter go on the same tape; a stray or unclosed
@@ -68,6 +69,7 @@ node tdump.js --outline 99 --clike samples\sample.qmd
                                 :: Quarto: h1 ~ … ~ sections, div.callout-note { … },
                                 :: cell.r { … }, sc.include { … }, sc.pagebreak;
                                 :: ul ~ li ~ … ~ ~ lists, blockquote ~ … ~,
+                                :: dl ~ dt ~ … ~ dd ~ … ~ ~ definition lists,
                                 :: [ [ "Id" "Amount" ] … ] pipe and grid tables;
                                 :: a stray ':::' shows as } ::: …?
 node tfreq.js src\              :: token/operator-role frequencies over a tree
