@@ -23,7 +23,8 @@ grammared into an AST.
   Only an end tag that was really required is reported.
 - **Quarto Markdown's block structure (prototype).** In `.qmd` files,
   sections (`#`…`######`, ended by the next heading as `~`), fenced divs
-  (`:::`), code cells and code blocks (raw bodies), shortcodes
+  (`:::`), code cells, code blocks and raw `{=html}` blocks (raw bodies;
+  `raw.html`), shortcodes
   (`{{< … >}}`), lists (`ul`/`ol`/`li`, ended by `~`), definition lists
   (`dl`/`dt`/`dd`), block quotes
   (`blockquote ~`), footnotes (`fn.id ~`), indented code (`code ~`), pipe
@@ -67,7 +68,8 @@ node tdump.js --outline 3 --clike samples\sample.xml
                                 :: (omitted end tags as li ~ … ~, &amp; shown as &)
 node tdump.js --outline 99 --clike samples\sample.qmd
                                 :: Quarto: h1 ~ … ~ sections, div.callout-note { … },
-                                :: cell.r { … }, sc.include { … }, sc.pagebreak;
+                                :: cell.r { … }, raw.html { … }, sc.include { … },
+                                :: sc.pagebreak;
                                 :: ul ~ li ~ … ~ ~ lists, blockquote ~ … ~,
                                 :: dl ~ dt ~ … ~ dd ~ … ~ ~ definition lists,
                                 :: [ [ "Id" "Amount" ] … ] pipe and grid tables;

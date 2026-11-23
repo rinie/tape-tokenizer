@@ -1148,6 +1148,8 @@ class UniLexer {
         const info = m[2].trim();
         let lang;
         if ((lang = /^\{([A-Za-z][\w-]*)/.exec(info))) lang = `cell.${lang[1]}`;
+        // {=html}: a raw block, passed to that output format untouched
+        else if ((lang = /^\{=([A-Za-z][\w-]*)/.exec(info))) lang = `raw.${lang[1]}`;
         // {{python}} is an escaped cell, shown not run: code, not cell
         else if ((lang = /^\{{0,2}\.?([A-Za-z][\w+-]*)/.exec(info))) lang = `code.${lang[1]}`;
         else lang = 'code';

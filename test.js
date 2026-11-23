@@ -382,6 +382,10 @@ test('qmd: indented code after a blank line; footnotes hold indented blocks', ()
   assert.deepEqual(fn.findings, []);
 });
 
+test('qmd: a {=format} fence is a raw block, raw.format', () => {
+  assert.deepEqual(qmdTags('```{=html}\n<b>x</b>\n```\n``` {=typst} \n#x\n```\n').out, ['{ raw.html', '} raw.html', '{ raw.typst', '} raw.typst']);
+});
+
 test('qmd: definition lists are dl ~ dt ~ … ~ dd ~ … ~ ~', () => {
   const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
   // a term (after a blank line) needs a ':' or '~' definition next, a blank
