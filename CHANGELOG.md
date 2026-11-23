@@ -30,7 +30,19 @@ item's line as a block of its own (#71), grid tables in the same layout
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), raw blocks named by their
-format (#84), and table captions (#86).
+format (#84), and table captions (#86), cut as **v0.10.0**.
+
+## v0.10.0 · 2026-11-23
+
+qmd's block structure, through #86: indented code, footnotes as
+containers, definition lists, raw blocks named by their format
+(`raw.html`) and table captions, each found on Quarto's own docs pages.
+Sixteen real pages (callouts, markdown-basics, tables, figures,
+cross-references, diagrams, title-blocks, citations, execution-options,
+revealjs, article-layout, html-basics, website-navigation, includes,
+pdf-basics, hello/vscode) are lossless with no findings. Still text:
+raw HTML blocks, setext headings, and block content inside grid-table
+cells (the tape keeps source order).
 
 ## PR #86 — qmd: table captions · 2026-11-23
 
