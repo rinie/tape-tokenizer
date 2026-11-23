@@ -30,9 +30,9 @@ item's line as a block of its own (#71), grid tables in the same layout
 list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), raw blocks named by their
-format (#84), and table captions.
+format (#84), and table captions (#86).
 
-## Unreleased — qmd: table captions
+## PR #86 — qmd: table captions · 2026-11-23
 
 - Pandoc puts a table's caption on a `:` line after it —
   `: Fruit prices {.striped .hover}`, or just attributes,
