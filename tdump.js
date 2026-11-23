@@ -67,7 +67,8 @@ OPTIONS
                    ul ~ li ~ … ~ ~, dl ~ dt ~ … ~ dd ~ … ~ ~,
                    blockquote ~ … ~, fn.id ~ … ~,
                    code ~ … ~ for indented code), pipe and grid tables as
-                   [ rows [ cells ] ],
+                   [ rows [ cells ] ] and a ': caption' after one as
+                   caption ~ … ~,
                    text undecoded.
   -l, --lang <l>   Force language: js | xml | html | rust | sql | py | yaml |
                    json5 | qmd. Default: detect from the file extension

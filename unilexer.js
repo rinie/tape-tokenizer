@@ -1087,6 +1087,7 @@ class UniLexer {
     // definition lists (Pandoc): a one-line term, then ':' or '~' definitions
     const DD_MARK = /^([:~])([ \t]+)(?=\S)/;
     let termJust = false;   // the last block line was a dt (blank lines between are fine)
+    let tableJust = false;  // … or a pipe/grid table: ': caption' may follow
     // an open dl a definition marker at column col continues (only lists and
     // items above it, which the marker ends)
     const dlOpen = (col) => {
@@ -1127,10 +1128,14 @@ class UniLexer {
       const fn = small && !mk && /^\[\^([^\]\s]+)\]:/.exec(content);   // footnote definition
       const afterTerm = termJust;
       termJust = false;
+      const afterTable = tableJust;
+      tableJust = false;
       const blockStart = small && /^(?:<!--|`{3,}|~{3,}|:{3,}|#{1,6}(?:[ \t]|$))/.test(content);
-      const dd = small && !mk && (m0 => m0 && (afterTerm || dlOpen(col)) ? m0 : null)(DD_MARK.exec(content));
-      const dt = small && !dd && !mk && !fn && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 && termAhead(next, col);
-      const structural = mk || fn || dd || dt || tableHead || gridHead || blockStart;
+      // a table's caption (Pandoc): ': Caption {attrs}' or 'Table: …' after it
+      const cap = small && afterTable && /^(?:Table)?:[ \t]+/.exec(content);
+      const dd = small && !mk && !cap && (m0 => m0 && (afterTerm || dlOpen(col)) ? m0 : null)(DD_MARK.exec(content));
+      const dt = small && !cap && !dd && !mk && !fn && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 && termAhead(next, col);
+      const structural = mk || fn || cap || dd || dt || tableHead || gridHead || blockStart;
       endLists(cs, col, mk || (dd || dt ? { type: 'dl' } : null), !structural && !prevBlank);
       const afterBlank = prevBlank;
       prevBlank = false;
@@ -1225,6 +1230,28 @@ class UniLexer {
         inline(cs + m[0].length, ce);
         return ce;
       }
+      if (cap) {
+        // caption ~ … ~: the ':' line and the rest of its paragraph (no
+        // closer in the source); in a quote, just the one line
+        const idx = emit(0x7B, KLASS.TAG, 'caption', cs, depth);
+        depth++;
+        inline(cs + cap[0].length, ce);
+        let lastCe = ce;
+        let p = next;
+        while (lineQ === 0 && p < len) {
+          const l = lineAt(p);
+          const lt = src.slice(p, l.ce);
+          const ind = /^[ \t]*/.exec(lt)[0].length;
+          if (ind === lt.length || LAZY_STOP.test(lt.slice(ind))) break;
+          ws(lastCe, p + ind);
+          inline(p + ind, l.ce);
+          lastCe = l.ce;
+          p = l.next;
+        }
+        depth--;
+        link(idx, emit(TAG_IMPLIED, KLASS.TAG, 'caption', lastCe, depth));
+        return lastCe;
+      }
       if (dt || dd) {
         // dl ~ dt ~ "term" ~ dd ~ … ~ ~: a term opens the dl (zero-width)
         // unless one is open; each ':' definition is an item like an li
@@ -1304,6 +1331,7 @@ class UniLexer {
         }
         depth--;
         link(tIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
+        tableJust = true;
         return lastCe;
       }
       if (gridHead) {
@@ -1345,6 +1373,7 @@ class UniLexer {
         endRow();                                                // no closing border
         depth--;
         link(tIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
+        tableJust = true;
         return lastCe;
       }
       if (!small && afterBlank && lineQ === 0) {
