@@ -856,7 +856,8 @@ class UniLexer {
   //                  higher level ends them with a zero-width '~' (the HTML
   //                  optional-end idea) — never past an enclosing div
   //   fenced divs    '::: {.callout-note}' / '::: summary' opens div.callout-
-  //                  note / div.summary (#id kept: div.panel-tabset#tbl-x);
+  //                  note / div.summary (#id kept: div.panel-tabset#tbl-x;
+  //                  attributes only: the first key, div[layout-ncol]);
   //                  a bare ':::' closes the nearest open div, ending any
   //                  sections opened inside it. Nothing open: an orphan '}'
   //   code           ```{r} opens cell.r (executable), ```python / ~~~bash
@@ -1292,10 +1293,16 @@ class UniLexer {
         if (rest) {                                              // opener
           let name = 'div';
           if (rest[0] === '{') {
-            const cls = /\.([\w-]+)/.exec(rest);
-            const id = /#([\w:.-]+)/.exec(rest);
+            // quoted values hidden first: src="a.png" is not a class
+            const attrs = rest.replace(/"[^"]*"|'[^']*'/g, '""');
+            const cls = /\.([\w-]+)/.exec(attrs);
+            const id = /#([\w:.-]+)/.exec(attrs);
             if (cls) name += `.${cls[1]}`;
             if (id) name += `#${id[1]}`;
+            // no class or id: the first attribute's key says what it is
+            // (::: {layout-ncol=2} is div[layout-ncol], not a bare div)
+            const key = !cls && !id && /([A-Za-z_][\w:.-]*)\s*=/.exec(attrs);
+            if (key) name += `[${key[1]}]`;
           } else name += `.${rest.split(/\s/)[0]}`;
           const idx = emit(0x7B, KLASS.TAG, name, cs, depth);
           stack.push({ idx, name, kind: 'div' });

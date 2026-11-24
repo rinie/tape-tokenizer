@@ -6,7 +6,8 @@ execute:
 ---
 
 <!-- qmd sample for the unilexer qmd mode: front matter, ATX sections that
-     end implicitly, fenced divs (nested, with attributes), executable code
+     end implicitly, fenced divs (nested, with attributes; one with
+     attributes only, a layout grid), executable code
      cells and plain code blocks whose bodies hold fence- and shortcode-looking
      text, a raw {=html} block, an HTML <details> block holding Markdown,
      inline shortcodes, pipe and grid tables (one captioned), a nested
@@ -30,6 +31,12 @@ source,[^src] and `{{< not-a-shortcode >}}` inside inline code is just code.
 - one currency
   1. EUR, rounded
      to cents
+
+::: {layout-ncol=2}
+Net 35.50.
+
+Gross 42.96.
+:::
 
 ::: {.callout-note appearance="minimal"}
 Totals are in EUR.

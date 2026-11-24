@@ -31,7 +31,23 @@ list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), raw blocks named by their
 format (#84), and table captions (#86), cut as **v0.10.0**. After it,
-raw HTML blocks (#89), and ESLint 10 with CI (#91).
+raw HTML blocks (#89), ESLint 10 with CI (#91), and attribute-only divs
+named by their first key.
+
+## Unreleased — qmd: attribute-only divs named by their key
+
+- A fenced div with attributes but no class or id — Quarto's layout grids,
+  `::: {layout-ncol=4}`, `::: {layout="[[1],[1,1]]"}` — came out as a
+  bare `div`, the same as an HTML `<div>` since #89, so the outline lost
+  what the div does. It is now named by its first attribute's key:
+  `div[layout-ncol] {`, `div[layout] {`. A class or id still names it
+  (`div.callout-note`, `div#tbl-x`), and `::: {}` stays `div`.
+- Quoted attribute values are hidden before the class/id/key search, so
+  `{src="a.png" .x}` is `div.x`, not `div.png`.
+- 22 divs renamed across typst.qmd, tables.qmd, execution-options.qmd and
+  website-navigation.qmd (`div[layout-ncol]` ×19, `div[layout]` ×2,
+  `div[layout-nrow]` ×1); no other change in the 22 real pages, all
+  lossless, no findings. sample.qmd gains a two-column layout div.
 
 ## PR #91 — ESLint 10 and CI · 2026-11-24
 
