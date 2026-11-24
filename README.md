@@ -171,7 +171,7 @@ ride on layer 2.
 
 ## Status
 
-Version **0.10.0** (`node tdump.js --version`; every tool reports the
+Version **0.11.0** (`node tdump.js --version`; every tool reports the
 `package.json` version). Working prototype, JavaScript, no runtime
 dependencies (Node 22+; `package.json` marks the `.js` files as ESM).
 `npm test` runs

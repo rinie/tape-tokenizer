@@ -33,9 +33,21 @@ and footnotes (#80), definition lists (#82), raw blocks named by their
 format (#84), and table captions (#86), cut as **v0.10.0**. After it,
 raw HTML blocks (#89), ESLint 10 with CI (#91), attribute-only divs
 named by their first key (#93), setext headings (#95), and simple and
-multiline tables.
+multiline tables (#96), cut as **v0.11.0**.
 
-## Unreleased — qmd: simple and multiline tables
+## v0.11.0 · 2026-11-24
+
+qmd's block structure, through #96: raw HTML blocks (`<div>` … `</div>`
+as `div { … }`, Markdown inside, optional end tags implied), fenced divs
+with attributes only named by their first key (`div[layout-ncol]`),
+setext headings, and Pandoc's simple and multiline tables in the same
+`[ [ cells ] ]` layout as pipe and grid tables. The repository now lints
+with ESLint 10 and runs lint and tests in CI on Node 22, 24 and 26
+(#91); Node 22+ is required. The 22 real Quarto pages are lossless with
+no findings. Still text: fancy list markers (`a.`, `i.`, `#.`) and block
+content inside grid-table cells (the tape keeps source order).
+
+## PR #96 — qmd: simple and multiline tables · 2026-11-24
 
 - Pandoc's tables without pipes — columns set by runs of dashes — came out
   as lines of text. They now take the same `[ [ cells ] … ]` layout as
