@@ -31,9 +31,9 @@ list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), raw blocks named by their
 format (#84), and table captions (#86), cut as **v0.10.0**. After it,
-raw HTML blocks (#89), and ESLint 10 with CI.
+raw HTML blocks (#89), and ESLint 10 with CI (#91).
 
-## Unreleased — ESLint 10 and CI
+## PR #91 — ESLint 10 and CI · 2026-11-24
 
 - No PR had ever been checked automatically ("no checks" on every one).
   `.github/workflows/ci.yml` now runs `npm ci`, `npm run lint` and
