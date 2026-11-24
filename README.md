@@ -137,6 +137,8 @@ openapi-exploration/ real-world OpenAPI/API specs (AGV services, a Transsmart
                      language's "no free letter" keyword tier)
 docs/                design docs (see below)
 CHANGELOG.md         progress and setbacks across the PRs
+eslint.config.mjs    ESLint 10 flat config (npm run lint)
+.github/workflows/   CI: lint + test on Node 22, 24, 26
 ```
 
 ## The two layers
@@ -167,10 +169,14 @@ ride on layer 2.
 ## Status
 
 Version **0.10.0** (`node tdump.js --version`; every tool reports the
-`package.json` version). Working prototype, JavaScript, no dependencies
-(Node 18+ for `node:util` `parseArgs`; `package.json` marks the `.js` files
-as ESM). `npm test` runs
-`validate.js` (tables vs real files) and `test.js` (regression assertions).
+`package.json` version). Working prototype, JavaScript, no runtime
+dependencies (Node 22+; `package.json` marks the `.js` files as ESM).
+`npm test` runs
+`validate.js` (tables vs real files) and `test.js` (regression assertions);
+`npm run lint` runs ESLint 10 (`eslint.config.mjs`: recommended rules,
+always semicolons, `eqeqeq`, `prefer-const`, `no-var`; `samples/` and
+`openapi-exploration/` are scanner input, not linted — the only dev
+dependencies). CI runs both on Node 22, 24 and 26 for every push and PR.
 Tables are linter-grade and tolerant, not a compiler. See the CHANGELOG for
 what's landed and what's still sketched.
 

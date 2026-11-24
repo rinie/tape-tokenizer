@@ -351,7 +351,6 @@ const SQL_DIALECTS = {
 
 const CLOSE_OF = { [T.LPAREN]: T.RPAREN, [T.LBRACKET]: T.RBRACKET, [T.LBRACE]: T.RBRACE };
 const IS_OPEN  = new Set([T.LPAREN, T.LBRACKET, T.LBRACE]);
-const IS_CLOSE = new Set([T.RPAREN, T.RBRACKET, T.RBRACE]);
 
 const REGEX_PRECEDING_KW = new Set([
   'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
@@ -606,7 +605,7 @@ class UniLexer {
           // mismatch / orphan: link stays -1 — tolerant, reported via repairMap
         }
       } else {
-        idx = emit(tag, lexeme, start, depth);
+        emit(tag, lexeme, start, depth);
       }
 
       // regex gate: trivia is transparent, keywords mostly end value position
