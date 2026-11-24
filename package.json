@@ -6,9 +6,16 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
-    "test": "node validate.js && node test.js"
+    "test": "node validate.js && node test.js",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^6.0.1",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0"
   }
 }

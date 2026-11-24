@@ -41,7 +41,7 @@ const REJECT = /\.(include|lt-gt|other|unquoted|documentation|banner|preprocesso
 // regex semantics. Transparently unwraps capturing / non-capturing groups that
 // wrap the entire expression.
 function toLiteral(re) {
-  if (re == null) return null;
+  if (re === null || re === undefined) return null;
   let s = re.trim();
 
   // peel a single group that wraps the whole thing: (\/\*) or (?:…)
@@ -78,7 +78,7 @@ function toLiteral(re) {
 
 // Split a regex alternation at top level (respecting groups/escapes/classes).
 function splitAlt(re) {
-  if (re == null) return [];
+  if (re === null || re === undefined) return [];
   const parts = [];
   let depth = 0, inClass = false, cur = '';
   for (let i = 0; i < re.length; i++) {

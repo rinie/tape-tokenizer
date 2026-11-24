@@ -19,7 +19,7 @@ const u = new UniLexer().tokenize(src);
 
 console.log('═══ the mnemonic projection (one tag byte per token) ═════════════');
 console.log('source, then its ghost — keywords whisper (f,c,r,i), literals shout');
-console.log('(I,N,D,X,R; a string is its own quote \"), ops show themselves:\n');
+console.log('(I,N,D,X,R; a string is its own quote "), ops show themselves:\n');
 for (const [line, ghost] of zipLines(src, u)) {
   console.log('  src   │ ' + line);
   console.log('  ghost │ ' + ghost);
@@ -59,13 +59,13 @@ console.log('lexical-scanner.js are the remaining migration targets.');
 function zipLines(source, tape) {
   const lines = source.split('\n');
   const perLine = lines.map(() => '');
-  let lineNo = 0; let lineStart = 0;
+  let lineNo = 0;
   const starts = [0];
   for (let i = 0; i < source.length; i++) if (source[i] === '\n') starts.push(i + 1);
   for (let t = 0; t < tape.length; t++) {
     if (tape.tagOf(t) === 0x10) continue;          // newline tokens ARE the line breaks
     const off = tape.offsetOf(t);
-    while (lineNo + 1 < starts.length && off >= starts[lineNo + 1]) { lineNo++; lineStart = starts[lineNo]; }
+    while (lineNo + 1 < starts.length && off >= starts[lineNo + 1]) lineNo++;
     const ch = tape.classOf(t) === 0 ? ' ' : tape.mnemonicOf(t);
     if (ch !== ' ') perLine[lineNo] += ch;
     else if (perLine[lineNo] && !perLine[lineNo].endsWith(' ')) perLine[lineNo] += ' ';

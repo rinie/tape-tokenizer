@@ -31,7 +31,27 @@ list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), raw blocks named by their
 format (#84), and table captions (#86), cut as **v0.10.0**. After it,
-raw HTML blocks (#89).
+raw HTML blocks (#89), and ESLint 10 with CI.
+
+## Unreleased — ESLint 10 and CI
+
+- No PR had ever been checked automatically ("no checks" on every one).
+  `.github/workflows/ci.yml` now runs `npm ci`, `npm run lint` and
+  `npm test` on Node 22, 24 and 26 for every push and pull request — the
+  same workflow as rinie/pulsespaceindex.
+- `eslint.config.mjs` (ESLint 10 flat config, the pulsespaceindex
+  settings, ESM): `js.configs.recommended`, `@stylistic/semi: always`,
+  `@stylistic/no-extra-semi`, `eqeqeq: always`, `prefer-const`, `no-var`.
+  `samples/` and `openapi-exploration/` are ignored: they are scanner
+  input, deliberately broken or foreign code. ESLint and its plugins are
+  dev dependencies only; there are still no runtime dependencies.
+- Six findings, all fixed: two `re == null` in `harvest.js` (now `=== null
+  || === undefined`, the same test; the harvested C table is unchanged),
+  an unused `IS_CLOSE` set and an unused `idx` assignment in
+  `unilexer.js`, an unused `lineStart` and a useless `\"` escape in
+  `demos/demo-unilexer.js`. Tests and every demo unchanged.
+- `engines.node` is now `>=22` (was `>=18`): ESLint 10 needs a current
+  Node, and 18 is past end of life.
 
 ## PR #89 — qmd: raw HTML blocks · 2026-11-23
 
