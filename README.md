@@ -29,8 +29,8 @@ grammared into an AST.
   inside), shortcodes
   (`{{< … >}}`), lists (`ul`/`ol`/`li`, ended by `~`), definition lists
   (`dl`/`dt`/`dd`), block quotes
-  (`blockquote ~`), footnotes (`fn.id ~`), indented code (`code ~`), pipe
-  and grid tables (a `[]` layout: `[` rows `[` cells `]` `]`, then
+  (`blockquote ~`), footnotes (`fn.id ~`), indented code (`code ~`), pipe,
+  grid, simple and multiline tables (a `[]` layout: `[` rows `[` cells `]` `]`, then
   `caption ~` for a `: caption` line) and front
   matter go on the same tape; a stray or unclosed
   `:::` or fence is a finding, never a refusal. Inline Markdown stays text.
@@ -77,7 +77,8 @@ node tdump.js --outline 99 --clike samples\sample.qmd
                                 :: sc.pagebreak;
                                 :: ul ~ li ~ … ~ ~ lists, blockquote ~ … ~,
                                 :: dl ~ dt ~ … ~ dd ~ … ~ ~ definition lists,
-                                :: [ [ "Id" "Amount" ] … ] pipe and grid tables,
+                                :: [ [ "Id" "Amount" ] … ] pipe, grid and
+                                :: simple (dash-column) tables,
                                 :: caption ~ … ~ after one;
                                 :: a stray ':::' shows as } ::: …?
 node tfreq.js src\              :: token/operator-role frequencies over a tree

@@ -31,10 +31,32 @@ list item after a nested one (#75), escaped cells with their language
 (#77), and block quotes (#78), cut as **v0.9.0**. After it, indented code
 and footnotes (#80), definition lists (#82), raw blocks named by their
 format (#84), and table captions (#86), cut as **v0.10.0**. After it,
-raw HTML blocks (#89), ESLint 10 with CI (#91), and attribute-only divs
-named by their first key (#93), and setext headings.
+raw HTML blocks (#89), ESLint 10 with CI (#91), attribute-only divs
+named by their first key (#93), setext headings (#95), and simple and
+multiline tables.
 
-## Unreleased — qmd: setext headings
+## Unreleased — qmd: simple and multiline tables
+
+- Pandoc's tables without pipes — columns set by runs of dashes — came out
+  as lines of text. They now take the same `[ [ cells ] … ]` layout as
+  pipe and grid tables, so a `: caption` after one attaches too:
+  - simple: a header line over a line of two or more dash runs, one row
+    per line, to a blank line (or a closing dash line); a blank cell is
+    an empty `""` so the columns stay aligned;
+  - multiline: a dash border, header lines, the dash-run line, rows
+    separated by blank lines, a closing border; a row's lines follow one
+    another in it, like a grid row;
+  - the headerless forms, which start with the dash-run line.
+- A cell is the text from its dash run's start to the next run's start
+  (Pandoc's rule), so right-aligned numbers and left-aligned text both
+  land in their column. Dash lines are punct, hidden in the outline.
+- Only after a blank line and outside block quotes. A lone `-----` or
+  `- - -` stays a thematic break, `Text` over `---` a setext heading, and
+  a border that never reaches a column line and a closing border is text.
+- `samples/sample.qmd` gains a currency table in simple form. The 22 real
+  pages have none: their outlines are unchanged.
+
+## PR #95 — qmd: setext headings · 2026-11-24
 
 - A heading written as a paragraph over an underline — `===` for h1,
   `---` for h2, the CommonMark/Pandoc setext form — came out as two lines

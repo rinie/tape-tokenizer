@@ -896,9 +896,10 @@ class UniLexer {
   //                  complete), the lines between Markdown again; inline
   //                  tags stay text; <script>/<style>/<pre> bodies are raw
   //   (also: block quotes, footnotes, indented code, definition lists,
-  //   grid tables, table captions, raw {=format} blocks — see below)
+  //   grid tables, simple and multiline (dash) tables, table captions,
+  //   raw {=format} blocks — see below)
   //
-  // Not handled (text): simple/multiline tables, fancy list
+  // Not handled (text): fancy list
   // markers (a. i. #.), block content inside grid-table cells.
   tokenizeQmd(src) {
     const tp = this._tape();
@@ -1222,6 +1223,120 @@ class UniLexer {
       return null;
     };
 
+    // simple and multiline tables (Pandoc): columns come from runs of
+    // dashes, not pipes. Simple: a header line over a line of 2+ dash runs,
+    // one row per line, to a blank line (or a closing dash line). Multiline:
+    // a full dash border, header lines, the dash-run line, rows separated
+    // by blank lines, a closing border. Headerless forms start with the
+    // dash-run line. A cell is the text from its run's start to the next
+    // run's start, the last one to the end of the line.
+    const dashRuns = (p, ce) => {                               // run starts, relative to p
+      const s = src.slice(p, ce);
+      if (!/^[ \t]*-[- \t]*$/.test(s)) return null;
+      const runs = [...s.matchAll(/-+/g)];
+      if (runs.length === 1 ? runs[0][0].length < 3 : runs.some((r) => r[0].length < 2)) return null;
+      return runs.map((r) => r.index);
+    };
+    // from the line [ls,ce): { kind: 'simple'|'multi', cols, lines } or null;
+    // lines are the non-blank lines, each { p, ce, dash, gap (a blank before) }
+    const dashTable = (ls, ce, next) => {
+      const at = (p) => {
+        const l = lineAt(p);
+        const blank = !src.slice(p, l.ce).trim();
+        return { p, ce: l.ce, next: l.next, blank, dash: blank ? null : dashRuns(p, l.ce), gap: false };
+      };
+      const ends = (r) => r.next >= len || at(r.next).blank;     // a closer stands before a blank line
+      const first = { p: ls, ce, next, dash: dashRuns(ls, ce), gap: false };
+      const lines = [first];
+      if (!first.dash) {                                         // simple, with a header
+        if (next >= len) return null;
+        const d = at(next);
+        if (!d.dash || d.dash.length < 2) return null;
+        lines.push(d);
+        let rows = 0;
+        for (let p = d.next; p < len;) {
+          const r = at(p);
+          if (r.blank) break;
+          lines.push(r);
+          if (r.dash) break;
+          rows++;
+          p = r.next;
+        }
+        return rows ? { kind: 'simple', cols: d.dash, lines } : null;
+      }
+      const headed = first.dash.length === 1;                    // a border: multiline with a header
+      let cols = headed ? null : first.dash;
+      let gap = false;
+      let rows = 0;
+      for (let p = next; p < len;) {
+        const r = at(p);
+        if (r.blank) {
+          if (!cols || gap || !rows) return null;                // no gap in the header, none doubled
+          gap = true;
+          p = r.next;
+          continue;
+        }
+        r.gap = gap;
+        gap = false;
+        lines.push(r);
+        if (r.dash && !cols) {                                   // the column line under the header
+          if (r.dash.length < 2 || lines.length < 3 || r.gap) return null;
+          cols = r.dash;
+        } else if (r.dash) {                                     // the closer
+          if (!rows || !ends(r)) return null;
+          const multi = r.dash.length === 1;
+          if (headed && !multi) return null;
+          if (!multi && lines.some((x) => x.gap)) return null;   // a simple table has no gaps
+          return { kind: multi ? 'multi' : 'simple', cols, lines };
+        } else if (cols) rows++;
+        p = r.next;
+      }
+      return null;
+    };
+    // a dash table's tape: the same [ [ cells ] … ] layout as a pipe table;
+    // dash lines are punct. A multiline row is every line up to a blank
+    // line or a dash line (source order, like a grid row).
+    const emitDashTable = ({ kind, cols, lines }, cs) => {
+      const tIdx = emit(0x5B, KLASS.BRACKET, '', cs, depth);
+      depth++;
+      let rowIdx = -1;
+      let lastCe = cs;
+      const endRow = () => {
+        if (rowIdx === -1) return;
+        depth--;
+        link(rowIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
+        rowIdx = -1;
+      };
+      for (const [k, l] of lines.entries()) {
+        const from = k === 0 ? cs : l.p;
+        if (l.dash || l.gap || kind === 'simple') endRow();
+        if (l.dash) {
+          const at = l.p + /^[ \t]*/.exec(src.slice(l.p, l.ce))[0].length;
+          ws(lastCe, Math.max(at, from));
+          emit(0x2D, KLASS.PUNCT, src.slice(Math.max(at, from), l.ce), Math.max(at, from), depth);
+        } else {
+          ws(lastCe, from);
+          if (rowIdx === -1) { rowIdx = emit(0x5B, KLASS.BRACKET, '', from, depth); depth++; }
+          const clamp = (x) => Math.min(Math.max(x, from), l.ce);
+          for (let c = 0; c < cols.length; c++) {
+            const x = c === 0 ? from : clamp(l.p + cols[c]);
+            const y = c + 1 < cols.length ? clamp(l.p + cols[c + 1]) : l.ce;
+            if (src.slice(x, y).trim()) inline(x, y);
+            else {                                               // blank: layout (simple: an empty cell)
+              ws(x, y);
+              if (kind === 'simple') emit(0x54, KLASS.TEXT, '', y, depth);
+            }
+          }
+        }
+        lastCe = l.ce;
+      }
+      endRow();
+      depth--;
+      link(tIdx, emit(0x5D, KLASS.BRACKET, '', lastCe, depth));
+      tableJust = true;
+      return lastCe;
+    };
+
     // One block line from cs (its content start) to ce at column col: what
     // it is, which lists it ends, and its tokens. Returns where scanning
     // resumes. Re-entered for the rest of a list-item line.
@@ -1249,9 +1364,12 @@ class UniLexer {
       const html = hs && (HTML_BLOCK.has(hs[1].toLowerCase()) || HTML_RAW.has(hs[1].toLowerCase()));
       const dd = small && !mk && !cap && (m0 => m0 && (afterTerm || dlOpen(col)) ? m0 : null)(DD_MARK.exec(content));
       const dt = small && !cap && !dd && !mk && !fn && !html && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 && termAhead(next, col);
-      const setext = small && !cap && !dd && !dt && !mk && !fn && !html && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 &&
+      const ls = src.lastIndexOf('\n', cs - 1) + 1;              // a dash table starts its line
+      const dashT = small && !cap && !dd && !dt && !mk && !fn && !html && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 &&
+        /^[ \t]*$/.test(src.slice(ls, cs)) && dashTable(ls, ce, next);
+      const setext = small && !dashT && !cap && !dd && !dt &&!mk && !fn && !html && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 &&
         !THEMATIC.test(content) && setextAhead(next, col);
-      const structural = mk || fn || cap || dd || dt || setext || html || tableHead || gridHead || blockStart;
+      const structural = mk || fn || cap || dd || dt || setext || dashT || html || tableHead || gridHead || blockStart;
       endLists(cs, col, mk || (dd || dt ? { type: 'dl' } : null), !structural && !prevBlank);
       const afterBlank = prevBlank;
       prevBlank = false;
@@ -1353,6 +1471,7 @@ class UniLexer {
         inline(cs + m[0].length, ce);
         return ce;
       }
+      if (dashT) return emitDashTable(dashT, cs);
       if (setext) {
         // the same section as '#'/'##': its title lines, then the
         // underline as punct inside it (the section ends ~ like ATX's)

@@ -10,7 +10,7 @@ execute:
      attributes only, a layout grid), executable code
      cells and plain code blocks whose bodies hold fence- and shortcode-looking
      text, a raw {=html} block, an HTML <details> block holding Markdown,
-     inline shortcodes, pipe and grid tables (one captioned), a nested
+     inline shortcodes, pipe, grid and simple tables (one captioned), a nested
      list, a block quote holding a list, a definition list and a footnote
      with indented code. One seam is deliberate: a stray ':::' after the
      summary div, closing nothing. -->
@@ -113,6 +113,11 @@ closed
 | closed | paid in full, booked |
 |        | on {{< meta date >}} |
 +--------+----------------------+
+
+  Code   Currency
+------   ----------
+   EUR   Euro
+   USD   US dollar
 
 [^src]: Totals come from the ledger export.
 
