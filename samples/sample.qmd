@@ -5,8 +5,8 @@ execute:
   echo: false
 ---
 
-<!-- qmd sample for the unilexer qmd mode: front matter, ATX sections that
-     end implicitly, fenced divs (nested, with attributes; one with
+<!-- qmd sample for the unilexer qmd mode: front matter, ATX and setext
+     (underlined) sections that end implicitly, fenced divs (nested, with attributes; one with
      attributes only, a layout grid), executable code
      cells and plain code blocks whose bodies hold fence- and shortcode-looking
      text, a raw {=html} block, an HTML <details> block holding Markdown,
@@ -59,7 +59,8 @@ import pandas as pd
 :::
 :::
 
-## Details
+Details
+-------
 
 ````markdown
 A fence inside a longer fence:

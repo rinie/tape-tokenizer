@@ -854,7 +854,9 @@ class UniLexer {
   //   front matter   ---…--- at the very start: ONE '!' declaration token
   //   sections       '# …' / '## …' open h1…h6; a heading of the same or a
   //                  higher level ends them with a zero-width '~' (the HTML
-  //                  optional-end idea) — never past an enclosing div
+  //                  optional-end idea) — never past an enclosing div. A
+  //                  setext heading (a paragraph over a === or --- line,
+  //                  after a blank line) is the same h1/h2
   //   fenced divs    '::: {.callout-note}' / '::: summary' opens div.callout-
   //                  note / div.summary (#id kept: div.panel-tabset#tbl-x;
   //                  attributes only: the first key, div[layout-ncol]);
@@ -896,7 +898,7 @@ class UniLexer {
   //   (also: block quotes, footnotes, indented code, definition lists,
   //   grid tables, table captions, raw {=format} blocks — see below)
   //
-  // Not handled (text): setext headings, simple/multiline tables, fancy list
+  // Not handled (text): simple/multiline tables, fancy list
   // markers (a. i. #.), block content inside grid-table cells.
   tokenizeQmd(src) {
     const tp = this._tape();
@@ -1198,6 +1200,28 @@ class UniLexer {
       return c >= col && c - col <= 3 && DD_MARK.test(lt.slice(ind.length));
     };
 
+    // setext headings (CommonMark/Pandoc): a paragraph whose lines are
+    // followed by a === (h1) or --- (h2) underline. From the paragraph's
+    // second line p: its further lines and the underline, or null.
+    const SETEXT_UL = /^(=+|-+)[ \t]*$/;
+    const setextAhead = (p, col) => {
+      const base = baseFor(col);
+      const lines = [];
+      while (p < len) {
+        const l = lineAt(p);
+        const lt = src.slice(p, l.ce);
+        const ind = /^[ \t]*/.exec(lt)[0];
+        const body = lt.slice(ind.length);
+        if (!body) return null;                                  // a blank line ends the paragraph
+        const u = SETEXT_UL.exec(body);
+        if (u && colOf(ind) - base <= 3) return { level: u[1][0] === '=' ? 1 : 2, lines, ul: { at: p + ind.length, ce: l.ce } };
+        if (body[0] === '>' || body[0] === '|' || LAZY_STOP.test(body) || THEMATIC.test(body) || DD_MARK.test(body) || HTML_START.test(body)) return null;
+        lines.push({ cs: p + ind.length, ce: l.ce });
+        p = l.next;
+      }
+      return null;
+    };
+
     // One block line from cs (its content start) to ce at column col: what
     // it is, which lists it ends, and its tokens. Returns where scanning
     // resumes. Re-entered for the rest of a list-item line.
@@ -1225,7 +1249,9 @@ class UniLexer {
       const html = hs && (HTML_BLOCK.has(hs[1].toLowerCase()) || HTML_RAW.has(hs[1].toLowerCase()));
       const dd = small && !mk && !cap && (m0 => m0 && (afterTerm || dlOpen(col)) ? m0 : null)(DD_MARK.exec(content));
       const dt = small && !cap && !dd && !mk && !fn && !html && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 && termAhead(next, col);
-      const structural = mk || fn || cap || dd || dt || html || tableHead || gridHead || blockStart;
+      const setext = small && !cap && !dd && !dt && !mk && !fn && !html && !tableHead && !gridHead && !blockStart && prevBlank && lineQ === 0 &&
+        !THEMATIC.test(content) && setextAhead(next, col);
+      const structural = mk || fn || cap || dd || dt || setext || html || tableHead || gridHead || blockStart;
       endLists(cs, col, mk || (dd || dt ? { type: 'dl' } : null), !structural && !prevBlank);
       const afterBlank = prevBlank;
       prevBlank = false;
@@ -1326,6 +1352,21 @@ class UniLexer {
         depth++;
         inline(cs + m[0].length, ce);
         return ce;
+      }
+      if (setext) {
+        // the same section as '#'/'##': its title lines, then the
+        // underline as punct inside it (the section ends ~ like ATX's)
+        const { level, lines, ul } = setext;
+        endSections(cs, level);
+        const idx = emit(0x7B, KLASS.TAG, `h${level}`, cs, depth);
+        stack.push({ idx, name: `h${level}`, kind: 'section', level });
+        depth++;
+        inline(cs, ce);
+        let lastCe = ce;
+        for (const l of lines) { ws(lastCe, l.cs); inline(l.cs, l.ce); lastCe = l.ce; }
+        ws(lastCe, ul.at);
+        emit(0x2D, KLASS.PUNCT, src.slice(ul.at, ul.ce), ul.at, depth);
+        return ul.ce;
       }
       if (cap) {
         // caption ~ … ~: the ':' line and the rest of its paragraph (no

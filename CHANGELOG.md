@@ -32,7 +32,22 @@ list item after a nested one (#75), escaped cells with their language
 and footnotes (#80), definition lists (#82), raw blocks named by their
 format (#84), and table captions (#86), cut as **v0.10.0**. After it,
 raw HTML blocks (#89), ESLint 10 with CI (#91), and attribute-only divs
-named by their first key (#93).
+named by their first key (#93), and setext headings.
+
+## Unreleased — qmd: setext headings
+
+- A heading written as a paragraph over an underline — `===` for h1,
+  `---` for h2, the CommonMark/Pandoc setext form — came out as two lines
+  of text, so its section was missing from the outline. It now opens the
+  same `h1 ~`/`h2 ~` section as `#`/`##`, ended `~` by the next heading;
+  a title may run over several lines, and the underline is punct inside
+  the section (hidden in the outline, like a table's delimiter row).
+- Only after a blank line (or at the start), outside block quotes, and
+  never for a list item, table row, fence or other block over the line.
+  `- - -` and `***` stay thematic breaks; front matter is matched before.
+- `samples/sample.qmd`'s Details section is underlined now; its outline
+  is unchanged. The 22 real pages have no setext headings: their outlines
+  are unchanged.
 
 ## PR #93 — qmd: attribute-only divs named by their key · 2026-11-24
 
