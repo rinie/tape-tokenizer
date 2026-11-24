@@ -70,6 +70,7 @@ node tdump.js --outline 3 --clike samples\sample.xml
                                 :: (omitted end tags as li ~ … ~, &amp; shown as &)
 node tdump.js --outline 99 --clike samples\sample.qmd
                                 :: Quarto: h1 ~ … ~ sections, div.callout-note { … },
+                                :: div[layout-ncol] { … } for ::: {layout-ncol=2},
                                 :: cell.r { … }, raw.html { … }, sc.include { … },
                                 :: details { summary { … } … } HTML blocks,
                                 :: sc.pagebreak;

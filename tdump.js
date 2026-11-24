@@ -62,7 +62,8 @@ OPTIONS
                    drops trailing line-break whitespace and is shown with
                    character references decoded (&amp; -> &), except in
                    HTML <script>/<style>. qmd uses the same layout
-                   (h2 ~ … ~, div.callout-note { … }, cell.r { … },
+                   (h2 ~ … ~, div.callout-note { … }, div[layout-ncol] { … }
+                   for ::: {layout-ncol=2}, cell.r { … },
                    raw.html { … } for a {=html} block, div { … } for an
                    HTML <div> block,
                    ul ~ li ~ … ~ ~, dl ~ dt ~ … ~ dd ~ … ~ ~,

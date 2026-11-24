@@ -392,6 +392,13 @@ test('qmd: a ": caption" line after a table is caption ~ … ~', () => {
   assert.deepEqual(view('a\nb\n: c\n'), ['"a"', '"b"', '": c"']);
 });
 
+test('qmd: an attribute-only div is named by its first key; quoted values are not classes', () => {
+  const names = (s) => qmdTags(s).out.filter((x) => x[0] === '{');
+  assert.deepEqual(names('::: {layout-ncol=2}\n:::\n::: {layout="[[1],[1,1]]"}\n:::\n'), ['{ div[layout-ncol]', '{ div[layout]']);
+  // a class or id still wins; '.png' inside a quoted value is not a class
+  assert.deepEqual(names('::: {.grid layout-ncol=2}\n:::\n::: {src="a.png" .x}\n:::\n::: {}\n:::\n'), ['{ div.grid', '{ div.x', '{ div']);
+});
+
 test('qmd: raw HTML blocks — block-level tags are structure, Markdown between', () => {
   const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
   // <div> … </div> holds Markdown; inline tags (<b>, <kbd>) stay text
