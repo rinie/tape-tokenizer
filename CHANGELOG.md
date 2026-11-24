@@ -32,9 +32,9 @@ list item after a nested one (#75), escaped cells with their language
 and footnotes (#80), definition lists (#82), raw blocks named by their
 format (#84), and table captions (#86), cut as **v0.10.0**. After it,
 raw HTML blocks (#89), ESLint 10 with CI (#91), and attribute-only divs
-named by their first key.
+named by their first key (#93).
 
-## Unreleased — qmd: attribute-only divs named by their key
+## PR #93 — qmd: attribute-only divs named by their key · 2026-11-24
 
 - A fenced div with attributes but no class or id — Quarto's layout grids,
   `::: {layout-ncol=4}`, `::: {layout="[[1],[1,1]]"}` — came out as a
