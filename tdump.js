@@ -68,7 +68,8 @@ OPTIONS
                    HTML <div> block,
                    ul ~ li ~ … ~ ~, dl ~ dt ~ … ~ dd ~ … ~ ~,
                    blockquote ~ … ~, fn.id ~ … ~,
-                   code ~ … ~ for indented code), pipe and grid tables as
+                   code ~ … ~ for indented code), pipe, grid, simple and
+                   multiline tables as
                    [ rows [ cells ] ] and a ': caption' after one as
                    caption ~ … ~,
                    text undecoded.

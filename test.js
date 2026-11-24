@@ -411,6 +411,23 @@ test('qmd: setext headings — === is h1, --- is h2, sections like ATX', () => {
   assert.equal(t.reconstruct(), 'A\n===\nB\n---\n');
 });
 
+test('qmd: simple and multiline tables — columns from dash runs, the [ [ cells ] ] layout', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1).join(' ').replace(/\s+/g, ' ');
+  // simple: a row per line, a blank cell kept as "" so columns stay aligned
+  assert.equal(view('  Id   Name\n----   ------\n   1   one\n   2\n\n: Ids\n'),
+    '[ [ "Id" "Name" ] [ "1" "one" ] [ "2" "" ] ] caption ~ "Ids" ~');
+  // multiline: header lines are one row, rows run to a blank line or the border
+  assert.equal(view('--------------\n Key  Value\n---- ---------\n a    first\n      line\n\n b    two\n--------------\n'),
+    '[ [ "Key" "Value" ] [ "a" "first" "line" ] [ "b" "two" ] ]');
+  // headerless forms
+  assert.equal(view('---- ----\n a    b\n---- ----\n'), '[ [ "a" "b" ] ]');
+  // not tables: thematic breaks, a border with no column line, a lone run
+  assert.equal(view('-----\n\ntext\n\n- - -\n\nA\n---\n'), '"-----" "text" "- - -" h2 ~ "A" ~');
+  assert.equal(view('-----\ntext\n-----\n'), '"-----" "text" "-----"');
+  const src = '  Id   Name\n----   ------\n   1   one\n\n';
+  assert.equal(new UniLexer().tokenizeQmd(src).reconstruct(), src);
+});
+
 test('qmd: raw HTML blocks — block-level tags are structure, Markdown between', () => {
   const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
   // <div> … </div> holds Markdown; inline tags (<b>, <kbd>) stay text
