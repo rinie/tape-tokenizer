@@ -22,7 +22,8 @@ grammared into an AST.
   tokens, void elements need no close, and `<script>`/`<style>` hold text.
   Only an end tag that was really required is reported.
 - **Quarto Markdown's block structure (prototype).** In `.qmd` files,
-  sections (`#`…`######`, ended by the next heading as `~`), fenced divs
+  sections (`#`…`######` or a `===`/`---` underline, ended by the next
+  heading as `~`), fenced divs
   (`:::`), code cells, code blocks and raw `{=html}` blocks (raw bodies;
   `raw.html`), HTML blocks (`<div>` … `</div>` as `div { … }`, Markdown
   inside), shortcodes

@@ -399,6 +399,18 @@ test('qmd: an attribute-only div is named by its first key; quoted values are no
   assert.deepEqual(names('::: {.grid layout-ncol=2}\n:::\n::: {src="a.png" .x}\n:::\n::: {}\n:::\n'), ['{ div.grid', '{ div.x', '{ div']);
 });
 
+test('qmd: setext headings — === is h1, --- is h2, sections like ATX', () => {
+  const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
+  // a paragraph (one or more lines) over the underline; the underline is hidden
+  assert.deepEqual(view('Title\n=====\n\nIntro.\n\nSub\npart two\n--\n\nbody\n\n# Next\n'),
+    ['h1 ~', '  "Title"', '  "Intro."', '  h2 ~', '    "Sub"', '    "part two"', '    "body"', '  ~', '~', 'h1 ~', '  "Next"', '~']);
+  // not underlines: a spaced thematic break, ***, and --- under a list item
+  assert.deepEqual(view('Text\n- - -\n\nText\n***\n'), ['"Text"', '"- - -"', '"Text"', '"***"']);
+  assert.ok(!view('- a\n---\n').some((x) => /h\d/.test(x)));
+  const t = new UniLexer().tokenizeQmd('A\n===\nB\n---\n');
+  assert.equal(t.reconstruct(), 'A\n===\nB\n---\n');
+});
+
 test('qmd: raw HTML blocks — block-level tags are structure, Markdown between', () => {
   const view = (s) => outlineView(s, 'qmd', 99, { clike: true }).split('\n').slice(1);
   // <div> … </div> holds Markdown; inline tags (<b>, <kbd>) stay text
